@@ -1,0 +1,277 @@
+{
+  "meta": {
+    "name": "minimal",
+    "description": "소수 뉴런의 단일 전달·억제·지연·분기 확인용 최소 설정. sum_threshold 모드를 끝까지 실행한다.",
+    "species_assumption": "primate_visual_cortex_model",
+    "notes": [
+      "뉴런 수·층 두께·연결 확률은 모형 파라미터다. 출처가 있는 측정값이 아니다.",
+      "sum_threshold 는 무차원 합산 모델이며 생물학적 막전위 모델이 아니다."
+    ]
+  },
+  "seeds": {"master": 20240101},
+  "engine": {
+    "mode": "sum_threshold",
+    "dt_ms": 1.0,
+    "duration_ms": 60.0,
+    "min_delay_steps": 1,
+    "delay_rounding": "ceil",
+    "weight_application": "emit",
+    "sum_threshold_interval_steps": 1,
+    "reset_between_samples": {
+      "voltages": true, "conductances": true, "event_queue": true,
+      "traces": true, "thresholds": false, "weights": false, "input_log": false
+    },
+    "sequence_mode": false
+  },
+  "cell_types": {
+    "retinal_ganglion": {
+      "dale": "excitatory", "compartments": ["soma"],
+      "C_pF": {"soma": 80.0, "basal": 100.0, "apical": 100.0},
+      "gL_nS": {"soma": 6.0, "basal": 5.0, "apical": 5.0},
+      "EL_mV": {"soma": -65.0, "basal": -70.0, "apical": -70.0},
+      "V_th_mV": -50.0, "V_reset_mV": -62.0, "t_ref_ms": 1.5,
+      "target_rate_hz": 10.0, "sum_threshold_theta": 0.35
+    },
+    "lgn_relay": {
+      "dale": "excitatory", "compartments": ["soma"],
+      "C_pF": {"soma": 100.0, "basal": 100.0, "apical": 100.0},
+      "gL_nS": {"soma": 7.0, "basal": 5.0, "apical": 5.0},
+      "EL_mV": {"soma": -68.0, "basal": -70.0, "apical": -70.0},
+      "V_th_mV": -50.0, "V_reset_mV": -63.0, "t_ref_ms": 2.0,
+      "target_rate_hz": 8.0, "sum_threshold_theta": 0.45
+    },
+    "spiny_stellate": {
+      "dale": "excitatory", "compartments": ["soma", "basal"],
+      "C_pF": {"soma": 150.0, "basal": 90.0, "apical": 90.0},
+      "gL_nS": {"soma": 8.0, "basal": 5.0, "apical": 5.0},
+      "EL_mV": {"soma": -70.0, "basal": -70.0, "apical": -70.0},
+      "g_couple_nS": {"soma_basal": 10.0, "soma_apical": 0.0},
+      "V_th_mV": -50.0, "V_reset_mV": -65.0, "t_ref_ms": 2.0,
+      "target_rate_hz": 5.0, "sum_threshold_theta": 0.8
+    },
+    "pyramidal": {
+      "dale": "excitatory", "compartments": ["soma", "basal", "apical"],
+      "C_pF": {"soma": 200.0, "basal": 120.0, "apical": 120.0},
+      "gL_nS": {"soma": 10.0, "basal": 6.0, "apical": 6.0},
+      "EL_mV": {"soma": -70.0, "basal": -70.0, "apical": -70.0},
+      "g_couple_nS": {"soma_basal": 9.0, "soma_apical": 4.0},
+      "V_th_mV": -50.0, "V_reset_mV": -65.0, "t_ref_ms": 2.5,
+      "target_rate_hz": 4.0, "sum_threshold_theta": 0.9
+    },
+    "pv_basket": {
+      "dale": "inhibitory", "compartments": ["soma"],
+      "C_pF": {"soma": 100.0, "basal": 80.0, "apical": 80.0},
+      "gL_nS": {"soma": 10.0, "basal": 5.0, "apical": 5.0},
+      "EL_mV": {"soma": -65.0, "basal": -70.0, "apical": -70.0},
+      "V_th_mV": -48.0, "V_reset_mV": -60.0, "t_ref_ms": 1.0,
+      "target_rate_hz": 12.0, "sum_threshold_theta": 0.6
+    },
+    "l1_inhibitory": {
+      "dale": "inhibitory", "compartments": ["soma"],
+      "C_pF": {"soma": 90.0, "basal": 80.0, "apical": 80.0},
+      "gL_nS": {"soma": 8.0, "basal": 5.0, "apical": 5.0},
+      "EL_mV": {"soma": -66.0, "basal": -70.0, "apical": -70.0},
+      "V_th_mV": -50.0, "V_reset_mV": -62.0, "t_ref_ms": 2.0,
+      "target_rate_hz": 5.0, "sum_threshold_theta": 0.8
+    }
+  },
+  "retina": {
+    "image": {"max_side_px": 64, "fov_deg": 12.0, "input_colorspace": "srgb"},
+    "channels": {"on_off_split": true, "keep_lowpass_lms": false, "lowpass_sigma_px": 6.0},
+    "dog": {"center_sigma_px": 1.0, "surround_sigma_px": 3.0, "truncate": 4.0,
+            "boundary_mode": "reflect", "normalize_each_kernel_to_unit_sum": true},
+    "drive": {"mode": "rate", "max_rate_hz": 50.0, "gain": 1.0,
+              "baseline_rate_hz": 0.0, "current_per_hz_pA": 2.0, "sum_mode_scale": 1.0}
+  },
+  "retinotopy": {
+    "mapping": "log_polar",
+    "e0_deg": 0.5,
+    "n_radial": 2,
+    "n_angular": 4,
+    "fovea_patch": {"enabled": true, "radius_deg": 0.5, "grid": 2},
+    "sampling": {"lowpass_before_sampling": true, "sigma_scale": 0.5,
+                 "min_sigma_px": 0.5, "interpolation_order": 1}
+  },
+  "anatomy": {
+    "area_gap_mm": 1.0,
+    "jitter_mm": 0.01,
+    "areas": {
+      "Retina": {
+        "kind": "retina",
+        "surface_extent_mm": [1.0, 1.0],
+        "neurons_per_layer": {"L_input": 0},
+        "cell_type_fractions": {"L_input": {"retinal_ganglion": 1.0}},
+        "visual_field": {"max_ecc_deg": 5.0, "rf_sigma_deg": 0.25,
+                         "rf_sigma_growth_per_deg": 0.06},
+        "notes": "뉴런 수는 (채널 수 x 시야 샘플 수)로 유도된다."
+      },
+      "LGN": {
+        "kind": "thalamus",
+        "surface_extent_mm": [1.0, 1.0],
+        "neurons_per_layer": {"L_relay": 24},
+        "cell_type_fractions": {"L_relay": {"lgn_relay": 1.0}},
+        "visual_field": {"max_ecc_deg": 5.0, "rf_sigma_deg": 0.3,
+                         "rf_sigma_growth_per_deg": 0.07}
+      },
+      "V1": {
+        "kind": "cortex",
+        "hierarchy_level": 1.0,
+        "surface_extent_mm": [1.5, 1.5],
+        "layer_thickness_mm": {"L1": 0.10, "L2": 0.20, "L3": 0.30,
+                               "L4": 0.30, "L5": 0.35, "L6": 0.35},
+        "neurons_per_layer": {"L1": 4, "L2": 12, "L3": 12, "L4": 24, "L5": 8, "L6": 8},
+        "cell_type_fractions": {
+          "L1": {"l1_inhibitory": 1.0},
+          "L2": {"pyramidal": 0.75, "pv_basket": 0.25},
+          "L3": {"pyramidal": 0.75, "pv_basket": 0.25},
+          "L4": {"spiny_stellate": 0.75, "pv_basket": 0.25},
+          "L5": {"pyramidal": 1.0},
+          "L6": {"pyramidal": 1.0}
+        },
+        "visual_field": {"max_ecc_deg": 5.0, "rf_sigma_deg": 0.35,
+                         "rf_sigma_growth_per_deg": 0.08}
+      }
+    }
+  },
+  "wiring": {
+    "max_total_synapses": 200000,
+    "rules": [
+      {"name": "Retina->LGN", "src": {"area": "Retina", "layer": ["L_input"]},
+       "dst": {"area": "LGN", "layer": ["L_relay"]},
+       "target_compartment": "soma", "receptor": "AMPA", "rule": "rf_knn",
+       "k": 6, "rf_match_sigma_deg": 0.8, "probability": 0.8,
+       "weight": {"dist": "lognormal", "median": 0.45, "sigma": 0.25,
+                  "min": 0.0, "max": 3.0},
+       "conduction_velocity_mm_per_ms": 1.0, "synaptic_delay_ms": 1.0,
+       "note": "망막 -> LGN 중계. 시야 위치 대응으로 연결한다."},
+
+      {"name": "LGN->V1_L4", "src": {"area": "LGN", "layer": ["L_relay"]},
+       "dst": {"area": "V1", "layer": ["L4"], "cell_type": ["spiny_stellate"]},
+       "target_compartment": "basal", "receptor": "AMPA", "rule": "rf_knn",
+       "k": 8, "rf_match_sigma_deg": 1.0, "probability": 0.7,
+       "weight": {"dist": "lognormal", "median": 0.5, "sigma": 0.3,
+                  "min": 0.0, "max": 3.0},
+       "conduction_velocity_mm_per_ms": 0.5, "synaptic_delay_ms": 1.0,
+       "plasticity_rule": "stdp",
+       "note": "주 상향 입력은 L4 로 보낸다. 다른 층의 감각 입력을 금지하는 절대 규칙은 아니다."},
+
+      {"name": "LGN->V1_L6_weak", "src": {"area": "LGN", "layer": ["L_relay"]},
+       "dst": {"area": "V1", "layer": ["L6"]},
+       "target_compartment": "basal", "receptor": "AMPA", "rule": "rf_knn",
+       "k": 3, "rf_match_sigma_deg": 1.2, "probability": 0.3,
+       "weight": {"dist": "lognormal", "median": 0.2, "sigma": 0.3,
+                  "min": 0.0, "max": 2.0},
+       "conduction_velocity_mm_per_ms": 0.5, "synaptic_delay_ms": 1.2,
+       "note": "L4 가 아닌 층으로 가는 약한 상향 입력 (혼합 허용)."},
+
+      {"name": "V1_L4->L4_PV", "src": {"area": "V1", "layer": ["L4"],
+                                       "cell_type": ["spiny_stellate"]},
+       "dst": {"area": "V1", "layer": ["L4"], "cell_type": ["pv_basket"]},
+       "target_compartment": "soma", "receptor": "AMPA", "rule": "local_radius",
+       "radius_mm": 0.4, "k": 6, "probability": 0.6,
+       "weight": {"dist": "lognormal", "median": 0.4, "sigma": 0.2,
+                  "min": 0.0, "max": 3.0},
+       "conduction_velocity_mm_per_ms": 0.2, "synaptic_delay_ms": 0.6},
+
+      {"name": "V1_L4_PV->L4", "src": {"area": "V1", "layer": ["L4"],
+                                       "cell_type": ["pv_basket"]},
+       "dst": {"area": "V1", "layer": ["L4"], "cell_type": ["spiny_stellate"]},
+       "target_compartment": "soma", "receptor": "GABA_A", "rule": "local_radius",
+       "radius_mm": 0.4, "k": 6, "probability": 0.7,
+       "weight": {"dist": "lognormal", "median": 0.5, "sigma": 0.2,
+                  "min": 0.0, "max": 3.0},
+       "conduction_velocity_mm_per_ms": 0.2, "synaptic_delay_ms": 0.5,
+       "note": "억제 연결. 가중치는 비음수 크기이고 부호는 세포 유형이 만든다."},
+
+      {"name": "V1_L4->L2L3", "src": {"area": "V1", "layer": ["L4"],
+                                      "cell_type": ["spiny_stellate"]},
+       "dst": {"area": "V1", "layer": ["L2", "L3"], "cell_type": ["pyramidal"]},
+       "target_compartment": "basal", "receptor": "AMPA", "rule": "local_radius",
+       "radius_mm": 0.5, "k": 8, "probability": 0.6,
+       "weight": {"dist": "lognormal", "median": 0.45, "sigma": 0.3,
+                  "min": 0.0, "max": 3.0},
+       "conduction_velocity_mm_per_ms": 0.2, "synaptic_delay_ms": 0.8,
+       "plasticity_rule": "stdp",
+       "note": "분기 확인: 한 L4 뉴런이 여러 L2/3 뉴런으로 갈라진다."},
+
+      {"name": "V1_L2L3_lateral", "src": {"area": "V1", "layer": ["L2", "L3"],
+                                          "cell_type": ["pyramidal"]},
+       "dst": {"area": "V1", "layer": ["L2", "L3"], "cell_type": ["pyramidal"]},
+       "target_compartment": "basal", "receptor": "AMPA", "rule": "local_radius",
+       "radius_mm": 0.6, "k": 5, "probability": 0.35,
+       "weight": {"dist": "lognormal", "median": 0.25, "sigma": 0.3,
+                  "min": 0.0, "max": 2.0},
+       "conduction_velocity_mm_per_ms": 0.15, "synaptic_delay_ms": 1.2,
+       "note": "수평 재귀 연결. 시간 진화에 실제 영향을 준다."},
+
+      {"name": "V1_L2L3->L5", "src": {"area": "V1", "layer": ["L2", "L3"],
+                                      "cell_type": ["pyramidal"]},
+       "dst": {"area": "V1", "layer": ["L5"]},
+       "target_compartment": "basal", "receptor": "AMPA", "rule": "local_radius",
+       "radius_mm": 0.6, "k": 4, "probability": 0.5,
+       "weight": {"dist": "lognormal", "median": 0.35, "sigma": 0.3,
+                  "min": 0.0, "max": 3.0},
+       "conduction_velocity_mm_per_ms": 0.2, "synaptic_delay_ms": 0.9},
+
+      {"name": "V1_L5->L6", "src": {"area": "V1", "layer": ["L5"]},
+       "dst": {"area": "V1", "layer": ["L6"]},
+       "target_compartment": "basal", "receptor": "AMPA", "rule": "local_radius",
+       "radius_mm": 0.6, "k": 4, "probability": 0.5,
+       "weight": {"dist": "lognormal", "median": 0.3, "sigma": 0.3,
+                  "min": 0.0, "max": 3.0},
+       "conduction_velocity_mm_per_ms": 0.2, "synaptic_delay_ms": 0.9},
+
+      {"name": "V1_L6->LGN_feedback", "src": {"area": "V1", "layer": ["L6"]},
+       "dst": {"area": "LGN", "layer": ["L_relay"]},
+       "target_compartment": "soma", "receptor": "AMPA", "rule": "rf_knn",
+       "k": 4, "rf_match_sigma_deg": 1.5, "probability": 0.4,
+       "weight": {"dist": "lognormal", "median": 0.15, "sigma": 0.3,
+                  "min": 0.0, "max": 1.5},
+       "conduction_velocity_mm_per_ms": 0.5, "synaptic_delay_ms": 2.0,
+       "note": "L6 -> LGN 피드백 회로. 재귀 경로의 지연이 길다."},
+
+      {"name": "V1_L5->L1_inh", "src": {"area": "V1", "layer": ["L5"]},
+       "dst": {"area": "V1", "layer": ["L1"]},
+       "target_compartment": "soma", "receptor": "AMPA", "rule": "local_radius",
+       "radius_mm": 0.8, "k": 3, "probability": 0.5,
+       "weight": {"dist": "lognormal", "median": 0.25, "sigma": 0.3,
+                  "min": 0.0, "max": 2.0},
+       "conduction_velocity_mm_per_ms": 0.2, "synaptic_delay_ms": 1.0,
+       "note": "L1 은 세포체 밀도가 낮지만 비어 있지 않다."},
+
+      {"name": "V1_L1_inh->L2L3_apical", "src": {"area": "V1", "layer": ["L1"]},
+       "dst": {"area": "V1", "layer": ["L2", "L3"], "cell_type": ["pyramidal"]},
+       "target_compartment": "apical", "receptor": "GABA_A", "rule": "local_radius",
+       "radius_mm": 0.8, "k": 5, "probability": 0.5,
+       "weight": {"dist": "lognormal", "median": 0.3, "sigma": 0.3,
+                  "min": 0.0, "max": 2.0},
+       "conduction_velocity_mm_per_ms": 0.15, "synaptic_delay_ms": 0.8,
+       "note": "L1 억제 뉴런이 피라미드의 apical 구획에 접점을 만든다."}
+    ]
+  },
+  "learning": {"mode": "none"},
+  "recording": {
+    "mode": "full", "backend": "hdf5", "state_sample_every_steps": 1,
+    "max_events": 2000000, "max_state_samples": 200000, "flush_every_steps": 50
+  },
+  "checkpoint": {"enabled": true, "every_samples": 2, "keep_last": 3},
+  "experiment": {
+    "protocol": "single_pass",
+    "n_samples": 4,
+    "stimuli": [
+      {"kind": "uniform", "n": 1, "params": {"size_px": 64, "value": 0.5}},
+      {"kind": "dot", "n": 2, "params": {"size_px": 64, "radius_px": 3.0}},
+      {"kind": "bar", "n": 2, "params": {"size_px": 64, "length_px": 32.0,
+                                          "width_px": 3.0}},
+      {"kind": "orientation_sweep", "n": 4,
+       "params": {"size_px": 64, "n_orientations": 4, "radius_px": 18.0,
+                  "cycles_per_px": 0.08}}
+    ],
+    "limits": {"max_disk_mb": 512, "max_ram_mb": 2048}
+  },
+  "validation": {
+    "dt_convergence_factors": [1.0, 0.5, 0.25],
+    "tolerances": {"lif_dt_convergence_mV": 0.6, "logpolar_roundtrip_deg": 0.05,
+                   "dog_uniform_response": 1e-6, "rao_gradient_rel": 0.0001}
+  }
+}

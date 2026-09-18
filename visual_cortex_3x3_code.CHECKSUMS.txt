@@ -1,0 +1,60 @@
+# visual_cortex_3x3 코드 ZIP 체크섬 (ZIP 밖에 기록)
+
+- 생성(UTC): 2026-09-18T04:11:41Z
+- 파일: visual_cortex_3x3_code.zip (192315 바이트, 항목 46개)
+- **ZIP 자신의 sha256 (이 파일은 ZIP 안에 들어 있지 않다):**
+  `5f632aa8d185144d2c4b84f6bc17f3492cfbc82f04420970c1623daada755e92`
+
+이 ZIP 에는 **실제 실행 결과가 들어 있지 않다.** 이번 납품의 수치 실험 상태는
+전부 `not_run` 이며 `runs/` 디렉터리는 존재하지 않는다.
+
+## ZIP 안의 실제 파일 목록
+
+| 경로 | 바이트 | crc32 | sha256 |
+|---|---|---|---|
+| `visual_cortex_3x3/.gitignore` | 126 | `d4d65477` | `ac4d19191d5f8ea6a0ea8275d744399277509df27568a223ff18b0d9a6b3d28e` |
+| `visual_cortex_3x3/BIOLOGY_AND_ASSUMPTIONS.md` | 11780 | `1549c4bc` | `8787b96e71a211c407120dea6d4d167099df5ddaeec2b022f97b60fac4c17566` |
+| `visual_cortex_3x3/DATA_SCHEMA.md` | 11426 | `4b9ca0dc` | `3539de0d282c1c2f815ef9d07a76f579c390a134f664f52f86654a66f23b5f00` |
+| `visual_cortex_3x3/IMPLEMENTATION_STATUS.md` | 10113 | `dffae6f8` | `f06c9e521cb8caee22e593ab913b086482e58fe59f5c5ffe8bbb5573f0fb21d9` |
+| `visual_cortex_3x3/README_KO.md` | 12700 | `cb6504a7` | `27208df02150f94712b08ae6e9c3770a9852d8465082c807e5ddb79d35ea36e9` |
+| `visual_cortex_3x3/configs/_cell_types_fragment.json` | 3139 | `14dedd49` | `aebfbfa47bf2f34791357efa31e4e85c40eeab911f0caddd24f949b69d0e210b` |
+| `visual_cortex_3x3/configs/hierarchy_small.json` | 116278 | `b3e0b820` | `9accd5648b62520129e865890884f1cc67838f9d1dce12825961865b49fd622a` |
+| `visual_cortex_3x3/configs/megapixel_input.json` | 28261 | `59ddd87c` | `a6ae4dc0c68fb2e1d07e9412a958deec2ff9fc371df53d032177ff4151741f52` |
+| `visual_cortex_3x3/configs/minimal.json` | 13841 | `b80c6294` | `16663c7fa7c02dce056ecc2448bba05f902479e37a96b409dfcd2ce334a99ca3` |
+| `visual_cortex_3x3/configs/v1_small.json` | 28499 | `9d09e0e7` | `efa6a484b104b66f7204d5e0a92573dc4c0c0aa98463fc05261c616b09aad836` |
+| `visual_cortex_3x3/cortex/__init__.py` | 867 | `173a11ee` | `75e58e53941688ca17f9f36cfa4516cbae7905cf8d12e1106264f9f28035d050` |
+| `visual_cortex_3x3/cortex/analysis.py` | 20658 | `e443294e` | `d44dce980f52640ca94781f3360dd1845fefb91b1f02accf2ce01da30b99b6a6` |
+| `visual_cortex_3x3/cortex/anatomy.py` | 17232 | `c0c4e20b` | `c8fa5edef16db51ba1c5db7952eef19b7e1fcf803ee6bd07d7c79768aa70454c` |
+| `visual_cortex_3x3/cortex/areas.py` | 16056 | `dc5a3e1d` | `bcdf1d48f5c8291face04a3f832cf287b86a424bf3aa54080f46540d542ba00f` |
+| `visual_cortex_3x3/cortex/cli.py` | 11553 | `6b6381a0` | `6d16c544b1fadcea99b8f124551863cfac7198916e2b5d2a0fb2b8965a63735e` |
+| `visual_cortex_3x3/cortex/config.py` | 32925 | `69bb6bed` | `d73db64e79da7d09360b2962b030c5a62dfad7c0c2abfdfc78ab40c3242499d0` |
+| `visual_cortex_3x3/cortex/dynamics.py` | 26515 | `4f51de30` | `cc6faee61819bfe672c6aa00e73d1ced895aaaaf53dc6fead8c24f3ddb22b055` |
+| `visual_cortex_3x3/cortex/events.py` | 17043 | `9093b2a4` | `1cdd8434713254e45368d146d270724584e6cdb1d1e2e35d9f46fe2db37c58da` |
+| `visual_cortex_3x3/cortex/ids.py` | 6092 | `42b044bc` | `55ad2efbde863bf1369bd61c672458d0d6dee3b66896ba097aaed905bd9810fb` |
+| `visual_cortex_3x3/cortex/plasticity.py` | 14185 | `95172d1d` | `62be2993ed146581f4f74dc2b9a24b4ed07e554167fa93a7bf82405100978566` |
+| `visual_cortex_3x3/cortex/predictive_coding.py` | 15702 | `91cd7bec` | `a8261d4e389fdc2f3bd94cafb4eeaf429c731596b61a0b31e34544af4ddd309d` |
+| `visual_cortex_3x3/cortex/recording.py` | 28511 | `9dae82de` | `b5f3e054baf61d6e3fb9faecd8844d8fddfab1984f1de0d3b4a63d86edd35599` |
+| `visual_cortex_3x3/cortex/records.py` | 25650 | `2646f5b3` | `8698e731f32896dbae5f2e75616ca61308f77f6fd90b220979835d1f60a187d3` |
+| `visual_cortex_3x3/cortex/retina.py` | 18866 | `07236527` | `fad7a984e1094fab0dde2ebc2fd7f93ded7744f95d93b439e79302b56e5bb66c` |
+| `visual_cortex_3x3/cortex/retinotopy.py` | 16636 | `102ca68b` | `aff3b18492b33ba94af9f1e4cf025a4a83de1f7f4ee798300744d0a69c59a0fc` |
+| `visual_cortex_3x3/cortex/rng.py` | 4975 | `cdc2e0a7` | `40ccdfcf9e571164d13d53ec7ddbf0cb9572bb080e0a38ae3291088b638148a8` |
+| `visual_cortex_3x3/cortex/runner.py` | 25421 | `7e1ed83d` | `9e31a1b59965850ec12666dd0007dd03b8658709c8836aa3e34f70636870b86d` |
+| `visual_cortex_3x3/cortex/stimuli.py` | 24214 | `ae27b9ca` | `d653cf986dfde2530406e77d69391b014b8517d4b261f9ca569edada55f55752` |
+| `visual_cortex_3x3/cortex/synapses.py` | 12618 | `c2a77ff4` | `dd31b8cd2462f5291f97282b3df11c3d009edeb4c989af4d80e7afe8081bc167` |
+| `visual_cortex_3x3/cortex/units.py` | 2780 | `7deb5f45` | `aa78919c6554ed60dc46e689609a9ba6653e188cfdab2fe6f9e3a7b1bdcd701e` |
+| `visual_cortex_3x3/cortex/v1_reference.py` | 6884 | `36d55b3c` | `3feac38d2a3556e9ff1d0bf24292e8be3f4f0b8877feb1636551093909b63f10` |
+| `visual_cortex_3x3/cortex/validation.py` | 38368 | `3fe00728` | `62ad4a6b426b497e133e2dced630143b3abc1014a42540f43d7610721d83a39c` |
+| `visual_cortex_3x3/cortex/visualization.py` | 13531 | `0a17956e` | `9edf0e4b1457c8e6bf23f934af4c378be2e21af9c27e605cd7639248f9834e1c` |
+| `visual_cortex_3x3/equations.md` | 14005 | `27cf06e5` | `097dcd7d82e59bdc84f4de720eb394e2fc2e3f5b6acf6e80b91f6a76eea2a8c8` |
+| `visual_cortex_3x3/pyproject.toml` | 804 | `1735cd21` | `7d15c06ecb6d889c3a2e1c8955f3f1bb53e27d61f406e7bf87f1bc734b62cbaa` |
+| `visual_cortex_3x3/requirements-dev.txt` | 52 | `6c7872df` | `06097435d9c3c0c5eb67266ff8a5226ecfa4351c43aaa29be4c07ef08fe1e927` |
+| `visual_cortex_3x3/requirements.txt` | 148 | `621860e9` | `ec52c33d04dbffecb55e49acb5c855a0db375138f7e2aceec2ca87d13488235d` |
+| `visual_cortex_3x3/run.py` | 8611 | `fe8ce89c` | `340d13c0e6866ec33b15325e25958321b7441f7a6fd41384886d37e985912ed2` |
+| `visual_cortex_3x3/tests/conftest.py` | 1009 | `4d81533f` | `53a226620340f35173e2ddfa2dcc359894c056515824801b08b1e3e6ad787d4f` |
+| `visual_cortex_3x3/tests/test_config.py` | 2284 | `c87957b8` | `521eb1ba2af00b65644ef2e32f62c0077cbc23d2a8b02003f9cfe82e1bdfd40d` |
+| `visual_cortex_3x3/tests/test_dynamics.py` | 3855 | `004c0f77` | `bf9dcb763f80bf3469e49df505ef838d743ed40cbcc769b6727b648c65e2b1ef` |
+| `visual_cortex_3x3/tests/test_events_delays.py` | 3163 | `908defbe` | `cc74f6cb0f7af6969520cd999e35ca25a09372b765d0086bee924f4c76c3016e` |
+| `visual_cortex_3x3/tests/test_plasticity_rao.py` | 2645 | `886970b2` | `5d552cfa339b87b33dd7e96c70ee8eff8c1cee271f2f3c9a578bb49081cb4d3f` |
+| `visual_cortex_3x3/tests/test_records.py` | 1927 | `28f31fb7` | `c5800095015a0e082d5a49ee3d95b0d119a0136fcef6b573acce0dc18f64abbc` |
+| `visual_cortex_3x3/tests/test_retina_retinotopy.py` | 2236 | `d29ae9e8` | `fce605e971a13bedde6651761c84467f00b78b98df32f5fb1ed97280ad6c4054` |
+| `visual_cortex_3x3/tests/test_structure_and_stimuli.py` | 3347 | `9d893256` | `0b260118d87b4b20502b44b14a0b9c4cf7b780aeffc9861971dadfeee6b88aff` |
