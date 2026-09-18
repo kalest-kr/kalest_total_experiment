@@ -1,0 +1,10 @@
+    root = Path(__file__).resolve().parent.parent
+    with tempfile.TemporaryDirectory() as td:
+        before = set(os.listdir(td))
+        code = ("import sys; sys.path.insert(0, r'%s'); "
+                "import cortex, cortex.records, cortex.dynamics, cortex.retina, "
+                "cortex.areas, cortex.runner, cortex.cli" % str(root))
+        proc = subprocess.run([sys.executable, "-c", code], cwd=td,
+                              capture_output=True, text=True, timeout=120, check=False)
+        after = set(os.listdir(td))
+        c.expect(proc.returncode == 0, "모든 모듈이 import 된다", stderr=proc.stderr[-500:])

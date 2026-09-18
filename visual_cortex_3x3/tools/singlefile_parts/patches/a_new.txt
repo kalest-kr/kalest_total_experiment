@@ -1,0 +1,24 @@
+_PLT = None
+
+
+def _plt():
+    """matplotlib 을 **처음 그림을 그릴 때만** 로드한다.
+
+    이 파일을 import 만 해도 백엔드 초기화가 일어나지 않게 하기 위함이다
+    (import 부작용 금지 규칙 유지). 한국어 글꼴이 있으면 쓰고, 없으면 기본
+    글꼴로 떨어진다 (오류를 내지 않는다).
+    """
+    global _PLT
+    if _PLT is None:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as _m_plt
+        _m_plt.rcParams["figure.dpi"] = 110
+        _m_plt.rcParams["axes.unicode_minus"] = False
+        _m_plt.rcParams["font.family"] = ["DejaVu Sans", "NanumGothic",
+                                          "Malgun Gothic", "AppleGothic",
+                                          "Unifont"]
+        _PLT = _m_plt
+    return _PLT
+
+

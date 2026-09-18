@@ -1,0 +1,7 @@
+matplotlib.use("Agg")
+
+plt.rcParams["figure.dpi"] = 110
+plt.rcParams["axes.unicode_minus"] = False
+# 한국어 글꼴이 있으면 쓰고, 없으면 기본 글꼴로 떨어진다 (오류를 내지 않는다).
+plt.rcParams["font.family"] = ["DejaVu Sans", "NanumGothic", "Malgun Gothic",
+                               "AppleGothic", "Unifont"]

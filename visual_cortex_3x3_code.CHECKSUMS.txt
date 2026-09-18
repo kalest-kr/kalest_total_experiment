@@ -1,12 +1,15 @@
 # visual_cortex_3x3 코드 ZIP 체크섬 (ZIP 밖에 기록)
 
-- 생성(UTC): 2026-09-18T04:11:41Z
-- 파일: visual_cortex_3x3_code.zip (192315 바이트, 항목 46개)
+- 생성(UTC): 2026-09-18T05:08:10Z
+- 파일: visual_cortex_3x3_code.zip (349480 바이트, 항목 71개)
 - **ZIP 자신의 sha256 (이 파일은 ZIP 안에 들어 있지 않다):**
-  `5f632aa8d185144d2c4b84f6bc17f3492cfbc82f04420970c1623daada755e92`
+  `63da204c5a2c191cc7537d855bfa0a55ae88b251ab15da794c92e4d7784048df`
 
 이 ZIP 에는 **실제 실행 결과가 들어 있지 않다.** 이번 납품의 수치 실험 상태는
 전부 `not_run` 이며 `runs/` 디렉터리는 존재하지 않는다.
+
+단일 파일 판은 `visual_cortex_3x3/cortex_all_in_one.py` 이며, 패키지와 같은 코드다
+(차이는 README_KO.md 2-1절과 파일 머리말 참조).
 
 ## ZIP 안의 실제 파일 목록
 
@@ -15,8 +18,8 @@
 | `visual_cortex_3x3/.gitignore` | 126 | `d4d65477` | `ac4d19191d5f8ea6a0ea8275d744399277509df27568a223ff18b0d9a6b3d28e` |
 | `visual_cortex_3x3/BIOLOGY_AND_ASSUMPTIONS.md` | 11780 | `1549c4bc` | `8787b96e71a211c407120dea6d4d167099df5ddaeec2b022f97b60fac4c17566` |
 | `visual_cortex_3x3/DATA_SCHEMA.md` | 11426 | `4b9ca0dc` | `3539de0d282c1c2f815ef9d07a76f579c390a134f664f52f86654a66f23b5f00` |
-| `visual_cortex_3x3/IMPLEMENTATION_STATUS.md` | 10113 | `dffae6f8` | `f06c9e521cb8caee22e593ab913b086482e58fe59f5c5ffe8bbb5573f0fb21d9` |
-| `visual_cortex_3x3/README_KO.md` | 12700 | `cb6504a7` | `27208df02150f94712b08ae6e9c3770a9852d8465082c807e5ddb79d35ea36e9` |
+| `visual_cortex_3x3/IMPLEMENTATION_STATUS.md` | 10995 | `ffec911d` | `d0f5042ebd782bd2e527f6bf7f9320a8282f48cd8f19170f4ba7e9d07a5f26ae` |
+| `visual_cortex_3x3/README_KO.md` | 15352 | `89f0a2f5` | `877687151da013fede1cac79ab4f4d836871c41eb8e658e6119c5afc03ddc882` |
 | `visual_cortex_3x3/configs/_cell_types_fragment.json` | 3139 | `14dedd49` | `aebfbfa47bf2f34791357efa31e4e85c40eeab911f0caddd24f949b69d0e210b` |
 | `visual_cortex_3x3/configs/hierarchy_small.json` | 116278 | `b3e0b820` | `9accd5648b62520129e865890884f1cc67838f9d1dce12825961865b49fd622a` |
 | `visual_cortex_3x3/configs/megapixel_input.json` | 28261 | `59ddd87c` | `a6ae4dc0c68fb2e1d07e9412a958deec2ff9fc371df53d032177ff4151741f52` |
@@ -45,6 +48,7 @@
 | `visual_cortex_3x3/cortex/v1_reference.py` | 6884 | `36d55b3c` | `3feac38d2a3556e9ff1d0bf24292e8be3f4f0b8877feb1636551093909b63f10` |
 | `visual_cortex_3x3/cortex/validation.py` | 38368 | `3fe00728` | `62ad4a6b426b497e133e2dced630143b3abc1014a42540f43d7610721d83a39c` |
 | `visual_cortex_3x3/cortex/visualization.py` | 13531 | `0a17956e` | `9edf0e4b1457c8e6bf23f934af4c378be2e21af9c27e605cd7639248f9834e1c` |
+| `visual_cortex_3x3/cortex_all_in_one.py` | 462999 | `de3556ab` | `720829fe04224068791fddf6f066ebbd341d4841a5b658289b0eca5640f61f42` |
 | `visual_cortex_3x3/equations.md` | 14005 | `27cf06e5` | `097dcd7d82e59bdc84f4de720eb394e2fc2e3f5b6acf6e80b91f6a76eea2a8c8` |
 | `visual_cortex_3x3/pyproject.toml` | 804 | `1735cd21` | `7d15c06ecb6d889c3a2e1c8955f3f1bb53e27d61f406e7bf87f1bc734b62cbaa` |
 | `visual_cortex_3x3/requirements-dev.txt` | 52 | `6c7872df` | `06097435d9c3c0c5eb67266ff8a5226ecfa4351c43aaa29be4c07ef08fe1e927` |
@@ -58,3 +62,27 @@
 | `visual_cortex_3x3/tests/test_records.py` | 1927 | `28f31fb7` | `c5800095015a0e082d5a49ee3d95b0d119a0136fcef6b573acce0dc18f64abbc` |
 | `visual_cortex_3x3/tests/test_retina_retinotopy.py` | 2236 | `d29ae9e8` | `fce605e971a13bedde6651761c84467f00b78b98df32f5fb1ed97280ad6c4054` |
 | `visual_cortex_3x3/tests/test_structure_and_stimuli.py` | 3347 | `9d893256` | `0b260118d87b4b20502b44b14a0b9c4cf7b780aeffc9861971dadfeee6b88aff` |
+| `visual_cortex_3x3/tools/build_single_file.py` | 14842 | `91ac7b1d` | `9c1be8206031972d2eda15fc28aa6e1cb7f61e958d28d0b983536f23f20eee19` |
+| `visual_cortex_3x3/tools/singlefile_parts/README.md` | 1423 | `df4ecde9` | `a0c40ebdfd955cfe32bf18e0a547d8fcaa08fc548fdaefec3fc5d14a2e89efe8` |
+| `visual_cortex_3x3/tools/singlefile_parts/builtin_configs.py` | 13170 | `41e7b44b` | `8ea62729e6c9e833890aa3e53234660153c10ca16485a5fa3b092b8b9199faf2` |
+| `visual_cortex_3x3/tools/singlefile_parts/builtin_minimal.py` | 17207 | `6a3f01ed` | `3af67cb1ec9afa3c3f29da9fa252968e24a237f3dfb36ee6a856c083a4c6509c` |
+| `visual_cortex_3x3/tools/singlefile_parts/builtin_rest.py` | 22983 | `0dd18d8b` | `ec577ea1059ac17c3c88bda92a70378ea356f81c67a51ee5cd3cd35a2f880737` |
+| `visual_cortex_3x3/tools/singlefile_parts/menu_and_entry.py` | 11577 | `0ee3f276` | `64bac76a328d95c94fad266958897d3c3d292d83cea41163bce20ee504148097` |
+| `visual_cortex_3x3/tools/singlefile_parts/patches/a_new.txt` | 835 | `369cd1d8` | `daf81299612ccb5239525563b329e87378b7255584cec54f405b5190fff3e876` |
+| `visual_cortex_3x3/tools/singlefile_parts/patches/a_old.txt` | 344 | `30b81c00` | `fdd7c7aae403df4d9b561fb6b835a6ebc8a10ff074787b838610e1ec16085d8c` |
+| `visual_cortex_3x3/tools/singlefile_parts/patches/b_new.txt` | 723 | `b4fd292b` | `7421c46e36bbd66fd8c3339d115c93e5f1c5c6da4fd526437c371d24c650c042` |
+| `visual_cortex_3x3/tools/singlefile_parts/patches/b_old.txt` | 446 | `860e60c8` | `527ee08088c9d499d321a3ae7c6cd193f7c79379290baea5de6fb561a8db0f32` |
+| `visual_cortex_3x3/tools/singlefile_parts/patches/c_new.txt` | 874 | `bae68bf2` | `ff2b2edbe0d43081986d74fcb8b103690ee27f20c2b905b1ada27788deea2e91` |
+| `visual_cortex_3x3/tools/singlefile_parts/patches/c_old.txt` | 636 | `086bd9ca` | `ff0e5611cda25e85c506df22135b0c82360106b2b5aa688d95d7a00b5b819e55` |
+| `visual_cortex_3x3/tools/singlefile_parts/patches/d_new.txt` | 216 | `ba8dd7af` | `0b678db29c5fa45aad53d7e248ac7d85cbd35fdb5e4766615296600cbd2a3095` |
+| `visual_cortex_3x3/tools/singlefile_parts/patches/d_old.txt` | 138 | `886f868b` | `66bcd3a2f08eac7b8e848f03c47ce008066aea37c78eae49326c13463dc1794c` |
+| `visual_cortex_3x3/tools/singlefile_parts/patches/e_new.txt` | 164 | `c8838002` | `63e0e57f054ae32b5a01b6092952e9151ac5f0a428a2789d79f8dbb4bb6329d7` |
+| `visual_cortex_3x3/tools/singlefile_parts/patches/e_old.txt` | 146 | `5013adee` | `47dbfdb42c66d21d30da026bcd6eb7b54cffe04864f04fff28f3f896227b5d63` |
+| `visual_cortex_3x3/tools/singlefile_parts/patches/f_new.txt` | 123 | `7a752d77` | `b708c0a589f4ab10d9548d028b5bc54448db8c4f2f095617262c582264876795` |
+| `visual_cortex_3x3/tools/singlefile_parts/patches/f_old.txt` | 132 | `4fcdb69f` | `083e077502b38c5f4e3fa73445abc5ab17017fb714f57b23c12f087d0f530494` |
+| `visual_cortex_3x3/tools/singlefile_parts/patches/g_new.txt` | 49 | `f1c7c810` | `704ae484b3bd580e2e0d0b27b8520e00ebfb1e1705737b4a79e8185be6dbf302` |
+| `visual_cortex_3x3/tools/singlefile_parts/patches/g_old.txt` | 33 | `bc5903ca` | `3337fb331e0c4b60ddb98db2b1c73fc349a7426563d9bd08a0772ef2358b256e` |
+| `visual_cortex_3x3/tools/singlefile_parts/patches/h_new.txt` | 79 | `32d70f68` | `fc0329a46d38f5faf3a76cbb3bf0ea0c2e303ea0221901856d1e0d531272109f` |
+| `visual_cortex_3x3/tools/singlefile_parts/patches/h_old.txt` | 70 | `4ce2a87f` | `11b1b4ac13ae6724706b70a54e39931a6173fe3af57ebd20ca858e0a1a173e22` |
+| `visual_cortex_3x3/tools/singlefile_parts/patches/i_new.txt` | 63 | `570b1880` | `bb8f9e4dc1b08c5e5648ca5b68e852970a007405829e7d7657aec2ad314e4568` |
+| `visual_cortex_3x3/tools/singlefile_parts/patches/i_old.txt` | 78 | `a2739025` | `143516bc1eb53834602016ef1b3a0836106f982018976d8ecd8e639a51aacc4d` |

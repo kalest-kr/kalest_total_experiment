@@ -9,6 +9,13 @@
 
 1. `python -m compileall` 로 모든 `.py` 파일의 **구문/컴파일 검사**
 2. `cortex.config.load(...)` 로 4개 설정 파일의 **스키마 검증** (시뮬레이션 없음)
+3. 단일 파일 판(`cortex_all_in_one.py`)에 대해:
+   - 경로 import 검사 (작업 디렉터리에 생기는 파일 없음, matplotlib 미로드 확인)
+   - `python cortex_all_in_one.py selftest` — 내장 설정 4종이 `configs/*.json` 과
+     같은 해석 결과(sha256)를 내는지 대조 (4/4 일치, 시뮬레이션 없음)
+   - `--help` 출력 확인 (argparse 만 동작)
+   - 패키지와 단일 파일의 **최상위 심볼 집합 대조** (228개 전부 존재, 누락 0)
+   - `tools/build_single_file.py` 재실행이 바이트 단위로 같은 파일을 만드는지 확인
 
 패키지 자동 설치와 데이터 자동 다운로드도 하지 않았다.
 
@@ -69,6 +76,8 @@
 | pytest 테스트 | ✅ 완료 (미실행) | `tests/` | |
 | `run.py` 한국어 메뉴 | ✅ 완료 | `run.py` | |
 | CLI (dry-run 기본) | ✅ 완료 | `cortex/cli.py` | |
+| 단일 파일 판 (설정 내장) | ✅ 완료 (미실행) | `cortex_all_in_one.py` | 패키지와 같은 코드. 차이는 README_KO.md 2-1절 |
+| 단일 파일 생성 도구 | ✅ 완료 | `tools/build_single_file.py` | 재생성 결과가 바이트 단위로 같음을 확인 |
 | Numba 가속 | ❌ 미구현 | — | 선택 사항이며 도입하지 않았다. 이름만 나열하지 않는다 |
 | GPU / PyTorch | ❌ 미사용 | — | 필수 의존성이 아니다 |
 

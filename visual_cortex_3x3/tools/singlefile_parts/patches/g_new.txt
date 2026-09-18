@@ -1,0 +1,1 @@
+        return load_config_by_name_or_path(path)

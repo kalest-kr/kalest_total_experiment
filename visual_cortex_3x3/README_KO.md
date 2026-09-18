@@ -96,6 +96,61 @@ python run.py
 
 ---
 
+## 2-1. 단일 파일 판 (`cortex_all_in_one.py`)
+
+패키지 전체(`cortex/` 22개 모듈 + `run.py`)를 **파이썬 파일 하나**로 합친 판도 있다.
+설정 4종을 코드로 내장해서 이 파일 하나만 있으면 동작한다.
+
+```powershell
+python cortex_all_in_one.py                                   # 한국어 메뉴
+python cortex_all_in_one.py selftest                          # 내장 설정 자체 점검
+python cortex_all_in_one.py inspect-config --config minimal
+python cortex_all_in_one.py validate --config minimal --execute
+python cortex_all_in_one.py simulate --config v1_small --execute
+python cortex_all_in_one.py report --run-dir runs/RUN_ID
+```
+
+`--config` 에는 **내장 설정 이름**(`minimal`, `v1_small`, `hierarchy_small`,
+`megapixel_input`) 또는 JSON 파일 경로를 줄 수 있다.
+
+### 패키지 판과의 차이 (전부 파일 머리말에도 적혀 있다)
+
+1. 상대 import 를 모두 없앴다. 모든 이름이 한 모듈 안에 있다.
+2. 이름이 겹치던 최상위 함수의 이름을 바꿨다:
+
+   | 원래 | 단일 파일 | | 원래 | 단일 파일 |
+   |---|---|---|---|---|
+   | `anatomy.build` | `build_anatomy` | | `rng.from_config` | `rng_from_config` |
+   | `areas.build` | `build_wiring` | | `stimuli.generate` | `generate_stimuli` |
+   | `plasticity.make` | `make_plasticity` | | `config.load` | `load_config` |
+   | `predictive_coding.make` | `make_rao_model` | | `config.resolve` | `resolve_config` |
+   | `cli.main` | `cli_main` | | `config.validate` | `validate_config` |
+
+3. matplotlib 을 `_plt()` 로 **지연 로드**한다. 이 파일을 import 만 해도 백엔드
+   초기화가 일어나지 않는다 (import 부작용 금지 규칙 유지).
+4. 설정 4종을 `BUILTIN_CONFIGS` 로 내장했다.
+5. `code_hash` 가 디렉터리 대신 이 파일 하나를 해싱한다.
+6. 검증 14(import 부작용)가 이 파일을 경로로 import 하는 방식으로 바뀌었다.
+
+계산 로직, 자료구조, 검증 기준, 단위 규약은 **패키지 판과 같다.**
+
+### 두 판이 같은지 확인하는 방법
+
+```powershell
+python cortex_all_in_one.py selftest
+```
+
+내장 설정 4종을 해석해 `configs/*.json` 과 sha256 을 비교한다. 시뮬레이션은
+실행하지 않는다.
+
+### 단일 파일 다시 만들기
+
+패키지 쪽을 고쳤다면 아래로 다시 생성한다 (이 스크립트도 실험을 실행하지 않는다).
+
+```powershell
+python tools/build_single_file.py
+```
+
 ## 3. 반복 작업용 CLI
 
 메뉴와 CLI 는 **같은 Runner/Recorder** 를 호출한다. 시뮬레이션 구현이 두 벌
@@ -245,6 +300,8 @@ python -m pytest -q
 | 파일 | 내용 |
 |---|---|
 | `README_KO.md` | (이 문서) 설치·실행·조회·재개 |
+| `cortex_all_in_one.py` | 패키지 전체를 합친 **단일 파일 판** (설정 내장) |
+| `tools/build_single_file.py` | 단일 파일을 다시 만드는 저작 도구 |
 | `equations.md` | 실제 구현된 수식과 이산화, 자료형, 시간/단위 |
 | `BIOLOGY_AND_ASSUMPTIONS.md` | 관찰 사실 / 계산 근사 / 미검증 가설 / 생략 범위 |
 | `DATA_SCHEMA.md` | 3×3 인터페이스, 이벤트·상태·결과 스키마, 재현 범위 |
