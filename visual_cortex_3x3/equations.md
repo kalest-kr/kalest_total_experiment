@@ -173,6 +173,47 @@ delay_steps   = max(min_delay_steps, ceil(delay_ms / dt))        (기본 ceil)
   불가능**하다.
 * 연속 지연 `delay_ms` 와 양자화 `delay_steps` 를 **둘 다** 저장한다.
 
+### 3.1 `local_radius` 의 거리 공간
+
+후보를 고르는 거리는 규칙의 `radius_space` 가 정한다.
+
+```
+cortical_3d : d = ‖(x,y,z)_src − (x,y,z)_dst‖₂        깊이 포함 (같은 층 수평 연결)
+surface     : d = ‖(u,v)_src − (u,v)_dst‖₂            표면 접선 거리 (층간 투사)
+```
+
+층을 가로지르는 투사는 같은 기둥 안에서 깊이를 따라 내려가므로 표면 거리가
+맞다. 깊이를 포함한 3D 거리로 재면 층 간격보다 작은 반경에서는 후보가 하나도
+나오지 않아 **이름만 있는 경로**가 된다 (필수 검증 9 가 이 경우를 잡는다).
+
+**지연은 어느 경우에도 3D 직선 거리를 쓴다.** 축삭이 실제로 지나는 길이는 깊이를
+포함하기 때문이다.
+
+### 3.2 전달 여유 (실행 전 진단)
+
+정상상태 근사로 "이 배선이 표적을 임계까지 올릴 수 있는가" 를 본다.
+
+```
+g_need   = gL · (V_th − E_L) / (E_rev − V_th)                      [nS]
+g(R)     = deg · w · (τ/1000) · R                                  [nS]
+R_need   = g_need / (deg · w · τ/1000)                             [Hz]
+R_max    = 1000 / t_ref        (피질)
+         = baseline + gain · max_rate_hz   (망막; 외부 구동이 상한)
+```
+
+`deg` 는 표적 1개당 평균 시냅스 수, `w` 는 평균 가중치, `τ` 는 수용체 시상수다.
+`R_need > R_max` 면 그 단계는 **어떤 입력에도 전달되지 않는다.** 단일 구획
+정상상태 근사이므로 정확한 예측이 아니라 자릿수 점검이다
+(`manifest.json` 의 `transmission_headroom`).
+
+`sum_threshold` 모드의 망막 구동에는 같은 뜻의 더 단순한 조건을 쓴다.
+
+```
+한 구간 최대 기여 = (baseline + gain · max_rate_hz) · (dt/1000)
+                   · sum_mode_scale · sum_threshold_interval_steps
+                   ≥ 망막 세포의 θ
+```
+
 ---
 
 ## 4. 망막 전처리

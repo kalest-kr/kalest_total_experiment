@@ -5,10 +5,12 @@
 "어느 입력이 언제 도착했고, 어떤 상태에서 발화했으며, 어디로 전달되었는가"를
 **재현 가능하게 추적**하는 것이다.
 
-> **이번 납품의 수치 실험 상태는 전부 `not_run` 이다.**
-> 이 저장소를 만드는 동안 학습·시뮬레이션·데이터 생성·수치 검증·그래프 생성을
-> 한 번도 실행하지 않았다. 실행은 **사용자가 명령을 내릴 때만** 일어난다.
-> 자세한 내용은 `IMPLEMENTATION_STATUS.md` 참조.
+> **이번 납품의 과학적 수치 실험 상태는 전부 `not_run` 이다.**
+> 보고할 정확도·통과율·성능 수치를 만들지 않았다. 실행은 **사용자가 명령을
+> 내릴 때만** 일어난다. 다만 자동 실행 기능(`run-all`)은 실행 경로가 실제로
+> 도는지 확인해야 만들 수 있으므로, **최소 설정에 대한 배관 점검(smoke test)은
+> 수행했다.** 그 과정에서 찾은 결함과 무엇을 실제로 돌렸는지는
+> `IMPLEMENTATION_STATUS.md` 에 전부 적어 두었다.
 
 이 프로젝트는 영역 이름만 붙인 일반 MLP 가 아니다. 공간 좌표, 세포 유형,
 표적 층·구획, 흥분/억제, 재귀 연결, 전달 지연이 **실제 계산을 바꾼다**.
@@ -67,6 +69,7 @@ python run.py
 한국어 메뉴가 뜬다. **번호를 고르기 전에는 아무 것도 실행되지 않는다.**
 
 ```
+  A) 전체 자동 실행 — 내가 지정한 폴더에 모든 결과를 쓴다
   1) 최소 모델 검증 실행          (configs/minimal.json)
   2) V1 시뮬레이션 실행            (configs/v1_small.json)
   3) 전체 시각 경로 작은 모델 실험 (configs/hierarchy_small.json)
@@ -77,6 +80,9 @@ python run.py
   8) 실행 기록 목록 보기
   0) 종료
 ```
+
+* **A)** 를 고르면 결과 폴더를 묻고 나서 설정 확인 → 검증 → 시뮬레이션 → 실험
+  → 참조 모델 → 보고서 → 그림 까지 한 번에 돌린다. 자세한 내용은 아래 3-1 절.
 
 * 각 메뉴에서 **설정 파일 경로와 출력 폴더**를 직접 지정할 수 있다 (엔터를 치면
   기본값을 쓴다). 경로에 **공백이나 한글이 있어도 된다.**
@@ -98,7 +104,7 @@ python run.py
 
 ## 2-1. 단일 파일 판 (`cortex_all_in_one.py`)
 
-패키지 전체(`cortex/` 22개 모듈 + `run.py`)를 **파이썬 파일 하나**로 합친 판도 있다.
+패키지 전체(`cortex/` 23개 모듈 + `run.py`)를 **파이썬 파일 하나**로 합친 판도 있다.
 설정 4종을 코드로 내장해서 이 파일 하나만 있으면 동작한다.
 
 ```powershell
@@ -108,6 +114,7 @@ python cortex_all_in_one.py inspect-config --config minimal
 python cortex_all_in_one.py validate --config minimal --execute
 python cortex_all_in_one.py simulate --config v1_small --execute
 python cortex_all_in_one.py report --run-dir runs/RUN_ID
+python cortex_all_in_one.py run-all --config minimal --out "C:/내 결과/1차"
 ```
 
 `--config` 에는 **내장 설정 이름**(`minimal`, `v1_small`, `hierarchy_small`,
@@ -166,6 +173,7 @@ python -m cortex.cli report         --run-dir runs/RUN_ID
 python -m cortex.cli explain-neuron --run-dir runs/RUN_ID --neuron-id 12 --from-ms 0 --to-ms 100
 python -m cortex.cli figures        --run-dir runs/RUN_ID --neuron-ids 12,34 --rebuild-model
 python -m cortex.cli list-runs
+python -m cortex.cli run-all        --config minimal --out D:/결과폴더
 ```
 
 | 명령 | 기본 동작 | `--execute` |
@@ -176,12 +184,99 @@ python -m cortex.cli list-runs
 | `experiment` | dry-run | train/dev/test 분할 실험 실행 |
 | `resume` | 재개할 체크포인트만 표시 | 실제 재개 |
 | `report` / `explain-neuron` / `figures` / `list-runs` | **기존 기록만 읽는다** | (해당 없음) |
+| `run-all` | **전체를 실행한다** (아래 3-1 절) | (해당 없음, `--dry-run` 으로 계획만) |
 
 * **수치 실험 명령은 `--execute` 없이는 아무 것도 실행하지 않는다.**
 * `report` 와 조회 명령은 기록이 없으면 "없다" 고 알려주고, **새 실험을 자동으로
   시작하지 않는다.**
 * `validate` 의 구조적 필수 검사가 실패하면 의존 실험은 중지되고 실패 상태가
   기록된다.
+
+---
+
+## 3-1. 전체 자동 실행: `run-all`
+
+하나의 명령으로 전 과정을 순서대로 돌리고 **지정한 폴더**에 결과를 정리한다.
+대화형 메뉴를 거치지 않는다.
+
+```powershell
+python -m cortex.cli run-all --config v1_small --out D:/결과폴더
+python cortex_all_in_one.py  run-all --config minimal --out "C:/내 결과/1차"
+```
+
+`run-all` 은 사용자가 출력 폴더를 명시해 직접 부르는 명령이므로 **이 하나만
+기본으로 실행된다.** 다른 수치 실험 명령은 여전히 `--execute` 가 필요하다.
+계획과 규모만 보려면 `--dry-run` 을 준다.
+
+### 단계
+
+| # | 단계 | 내용 |
+|---|---|---|
+| 01 | `config_check` | 설정 해석·검증, 규모 추정 (실행 없음) |
+| 02 | `validate` | 필수 검증 1~14 |
+| 03 | `simulate` | 자극 제시 시뮬레이션 |
+| 04 | `experiment` | train/dev/test 분할 실험 + readout |
+| 05 | `reference` | Rao 참조 모델, 고정 Gabor 대조, 뉴런 조회, 소거 재실행 |
+| – | `report` | 각 실행 기록에서 한국어 보고서 생성 |
+| – | `figures` | 각 실행 기록에서 그림 생성 |
+
+`--stages config_check,simulate` 처럼 일부만 고를 수 있다. **폴더 번호는 고른
+순서가 아니라 위 표의 고정 번호를 쓰므로**, 일부만 돌린 결과도 전체 실행과 같은
+경로로 비교할 수 있다.
+
+### 출력 구조
+
+```
+D:/결과폴더/
+├─ SUMMARY_ko.md          ← 사람이 읽는 한국어 요약 (summary.json 에서만 생성)
+├─ summary.json           ← 단계별 상태·소요 시간·핵심 수치
+├─ run_all.log            ← 진행 로그 (터미널과 같은 내용)
+└─ <설정이름>/
+   ├─ 01_config_check/inspect.json
+   ├─ 02_validate/        ← manifest.json, validation.json, report.md, figures/ …
+   ├─ 03_simulate/        ← events/states, metrics.jsonl, checkpoints/ …
+   ├─ 04_experiment/
+   └─ 05_reference/       ← reference.json, rao.png
+```
+
+### 주요 선택지
+
+| 선택지 | 뜻 |
+|---|---|
+| `--out <폴더>` | **필수.** 결과를 쓸 폴더. 공백·한글 경로 가능 |
+| `--config a,b` | 설정 이름/경로를 쉼표로 여러 개. `all` 이면 전부 |
+| `--stages ...` | 돌릴 단계만 고른다 (기본은 전부) |
+| `--backend auto\|hdf5\|npz` | 기록 백엔드. `auto` 는 h5py 가 없으면 npz 로 **바꾸고 알린다** |
+| `--limit-stimuli N` | 자극을 앞에서부터 N개로 제한 (빠른 점검용, 기록에 남는다) |
+| `--duration-ms` / `--seed` | `engine.duration_ms` / `seeds.master` 덮어쓰기 |
+| `--overwrite` | 이미 `completed` 인 결과 폴더를 `<이름>_old_<UTC>` 로 옮기고 새로 쓴다 |
+| `--stop-on-fail` | 한 단계라도 실패하면 즉시 중단 (기본은 계속 진행하고 상태를 기록) |
+| `--dry-run` | 계획과 규모만 계산하고 아무 것도 실행하지 않는다 |
+
+* 덮어쓴 설정 값(`--limit-stimuli` 등)은 **전부** `summary.json` 과
+  `SUMMARY_ko.md` 에 남는다. 조용히 줄이지 않는다.
+* **이미 완료된 결과 폴더는 덮어쓰지 않는다.** `--overwrite` 없이 같은 폴더를
+  다시 쓰면 오류로 멈춘다.
+* `validate` 가 실패하고 `validation.stop_experiment_on_failure` 가 참이면
+  `simulate`/`experiment` 는 건너뛰고 그 이유가 기록된다.
+* Ctrl+C 로 중단해도 그때까지의 기록과 체크포인트는 남는다.
+
+### 결과가 비어 있을 때 (중요)
+
+시뮬레이션이 **오류 없이 끝났는데 스파이크가 0** 일 수 있다. 이것은 모형의
+결론이 아니라 대개 구동이나 시냅스 전달이 임계에 닿지 못했다는 뜻이다.
+그래서 두 가지 진단을 자동으로 기록한다.
+
+* **실행 전** — `manifest.json` 의 `transmission_headroom`: 흥분성 배선 규칙마다
+  표적을 임계까지 올리는 데 필요한 앞 영역 발화율(`presyn_rate_needed_hz`)과
+  실제로 낼 수 있는 상한(`presyn_rate_max_hz`)을 손계산해 비교한다.
+  `reachable: false` 인 규칙은 **어떤 입력에도 전달되지 않는다.**
+  망막 설정이 자기 임계에 닿지 못하면 `inspect-config` 단계에서 이미 경고한다.
+* **실행 후** — `manifest.json` 의 `silent_areas` 와 `SUMMARY_ko.md` 의 경고:
+  모든 표본에서 한 번도 발화하지 않은 영역을 이름으로 적는다.
+
+두 진단 모두 단일 구획 정상상태 근사이므로 정확한 예측이 아니라 **자릿수
+점검**이다.
 
 ---
 
@@ -228,6 +323,19 @@ runs/<실행ID>/
 
 `status` 는 `running / completed / interrupted / failed` 중 하나다.
 **이미 `completed` 인 폴더는 덮어쓰지 않는다.** 다른 `--run-dir` 를 주어야 한다.
+
+`run-all` 로 실행하면 이 폴더들이 `<출력폴더>/<설정이름>/<번호>_<단계>/` 아래에
+만들어지고, 최상위에 `SUMMARY_ko.md` / `summary.json` / `run_all.log` 가 생긴다
+(3-1 절).
+
+`manifest.json` 에는 진단 항목도 들어간다.
+
+| 키 | 뜻 |
+|---|---|
+| `input_normalization` | 정규화 백분위, 추정에 쓴 분할, **어떤 표현에서 추정했는지**(`grid_samples`), 바닥에 걸린 채널 |
+| `transmission_headroom` | 배선 규칙별 전달 여유. `blocked_rules` 가 비어 있지 않으면 그 뒤 영역은 침묵할 수 있다 |
+| `silent_areas` | 모든 표본에서 한 번도 발화하지 않은 영역 |
+| `stimulus_cap` | `--limit-stimuli` 로 자극을 잘랐는지와 그 개수 |
 
 스키마 전체는 `DATA_SCHEMA.md` 에 있다.
 
@@ -281,12 +389,14 @@ python -m cortex.cli resume --run-dir runs/RUN_ID --execute
 
 ## 8. 테스트
 
-이 저장소를 만드는 동안 테스트를 실행하지 않았다. 사용자가 직접 실행한다:
-
 ```powershell
 python -m pip install -r requirements-dev.txt
 python -m pytest -q
 ```
+
+`tests/test_autorun_and_drive.py` 는 자동 실행과 구동/전달 진단의 **회귀 방지**
+테스트다. 각 테스트가 실제로 고친 결함 하나에 대응한다
+(`IMPLEMENTATION_STATUS.md` 의 "실제로 실행한 것" 표 참조).
 
 `tests/` 의 pytest 는 단위 수준 검사이고, 명세의 **필수 검증 1~14** 는
 `python -m cortex.cli validate --config <설정> --execute` 가 실행한다.

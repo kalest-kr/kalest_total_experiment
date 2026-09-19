@@ -81,6 +81,13 @@ _WIRING_TEMPLATE: dict[str, Any] = {
     "rule": "rf_knn",                      # rf_knn | local_radius | all_to_all_sampled
     "k": 12,                               # rf_knn 후보 수
     "radius_mm": 0.3,                      # local_radius 반경 (피질 mm)
+    # local_radius 의 거리를 어느 공간에서 재는가.
+    #   cortical_3d : 깊이를 포함한 3D 거리 (같은 층 안의 수평 연결용)
+    #   surface     : 피질 표면 좌표 (u,v) 위의 접선 거리. 깊이 차이를 무시한다.
+    #                 층을 가로지르는 수직(층간) 투사는 같은 기둥 안에서 깊이를
+    #                 따라 내려가므로 이쪽이 맞다. 지연 계산은 어느 경우에도
+    #                 3D 직선 거리를 쓴다 (축삭이 실제로 지나는 길이).
+    "radius_space": "cortical_3d",         # cortical_3d | surface
     "rf_match_sigma_deg": 0.4,             # 시야 위치 대응 허용폭
     "probability": 0.5,                    # 후보 중 실제로 만들 확률
     "max_synapses_per_target": 0,          # 0 이면 제한 없음
@@ -316,6 +323,9 @@ DEFAULTS: dict[str, Any] = {
     "experiment": {
         "protocol": "single_pass",           # single_pass | sweep | train_dev_test
         "stimuli": [],                       # stimuli.py 가 해석하는 명세 목록
+        # 생성된 자극 수를 앞에서부터 이 개수로 자른다 (0 이면 자르지 않는다).
+        # 빠른 점검용이며, 자른 사실은 manifest 와 요약에 기록된다.
+        "max_stimuli": 0,
         "n_samples": 1,
         "splits": {"train": 0.6, "dev": 0.2, "test": 0.2, "stratified": True},
         "conditions": [],                    # 대조군 정의
@@ -513,6 +523,9 @@ def validate(cfg: dict[str, Any]) -> None:
                  f"{tag}: 알 수 없는 target_compartment")
         _require(r["rule"] in ("rf_knn", "local_radius", "all_to_all_sampled"),
                  f"{tag}: 알 수 없는 rule {r['rule']!r}")
+        _require(r["radius_space"] in ("cortical_3d", "surface"),
+                 f"{tag}: 알 수 없는 radius_space {r['radius_space']!r} "
+                 f"(cortical_3d 또는 surface)")
         _require(0.0 <= r["probability"] <= 1.0, f"{tag}: probability 는 [0,1]")
         _require(r["conduction_velocity_mm_per_ms"] > 0, f"{tag}: 전도속도는 양수")
         _require(r["synaptic_delay_ms"] >= 0, f"{tag}: 시냅스 지연은 0 이상")
@@ -582,6 +595,8 @@ def validate(cfg: dict[str, Any]) -> None:
              "recording.state_sample_every_steps 는 1 이상")
 
     _require(cfg["wiring"]["max_total_synapses"] > 0, "wiring.max_total_synapses 는 양수")
+    _require(int(cfg["experiment"]["max_stimuli"]) >= 0,
+             "experiment.max_stimuli 는 0 이상 (0 이면 자르지 않는다)")
 
 
 def load(path: str | Path) -> dict[str, Any]:
@@ -726,6 +741,60 @@ def config_hash(cfg: dict[str, Any]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def drive_headroom_warnings(cfg: dict[str, Any]) -> list[str]:
+    """망막 구동이 자기 임계에 닿을 수 있는지 **실행 전에** 확인한다.
+
+    최대 입력에서도 망막 뉴런이 임계를 못 넘으면 전체 회로가 통째로 침묵한다.
+    그 상태는 오류 없이 "스파이크 0건" 으로만 나타나므로 읽는 사람이 모형의
+    결론으로 오해하기 쉽다. 여기서 한도를 손으로 계산해 경고를 만든다.
+    설정을 강제로 막지는 않는다 (의도적으로 약한 구동을 볼 수도 있다).
+    """
+    out: list[str] = []
+    drive = cfg["retina"]["drive"]
+    eng = cfg["engine"]
+    max_rate = (float(drive["baseline_rate_hz"])
+                + float(drive["gain"]) * float(drive["max_rate_hz"]))
+    # 망막 영역에 실제로 배치된 세포 유형만 본다.
+    types: set[str] = set()
+    for a in cfg["anatomy"]["areas"].values():
+        if a["kind"] != "retina":
+            continue
+        for frac in a["cell_type_fractions"].values():
+            types.update(k for k, v in frac.items() if float(v) > 0.0)
+    if not types:
+        return out
+
+    if eng["mode"] == "sum_threshold":
+        contrib = (max_rate * float(eng["dt_ms"]) / 1000.0
+                   * float(drive["sum_mode_scale"])
+                   * int(eng["sum_threshold_interval_steps"]))
+        for name in sorted(types):
+            theta = float(cfg["cell_types"][name]["sum_threshold_theta"])
+            if contrib < theta:
+                out.append(
+                    f"망막 세포 유형 {name!r} 이 최대 입력에서도 발화하지 못한다: "
+                    f"한 구간 최대 기여 {contrib:.4g} < 임계 {theta:.4g}. "
+                    f"retina.drive.sum_mode_scale 을 키우거나 "
+                    f"engine.sum_threshold_interval_steps 를 늘려라 "
+                    f"(지금 설정으로 실행하면 전체 회로가 침묵한다).")
+        return out
+
+    i_max_pA = max_rate * float(drive["current_per_hz_pA"])
+    for name in sorted(types):
+        ct = cfg["cell_types"][name]
+        gL = float(ct["gL_nS"]["soma"])
+        need_mV = float(ct["V_th_mV"]) - float(ct["EL_mV"]["soma"])
+        i_need_pA = gL * need_mV                      # nS * mV = pA
+        if i_max_pA < i_need_pA:
+            out.append(
+                f"망막 세포 유형 {name!r} 이 최대 입력에서도 발화하지 못한다: "
+                f"최대 전류 {i_max_pA:.4g} pA < 임계까지 필요한 정상상태 전류 "
+                f"{i_need_pA:.4g} pA (gL {gL:g} nS x {need_mV:g} mV). "
+                f"retina.drive.current_per_hz_pA 또는 max_rate_hz 를 키워라 "
+                f"(지금 설정으로 실행하면 전체 회로가 침묵한다).")
+    return out
+
+
 def iter_area_layers(cfg: dict[str, Any]) -> Iterable[tuple[str, str, int]]:
     """(area, layer, n_neurons) 를 결정적 순서로 열거한다."""
     for aname in sorted(cfg["anatomy"]["areas"]):
@@ -737,6 +806,6 @@ def iter_area_layers(cfg: dict[str, Any]) -> Iterable[tuple[str, str, int]]:
 __all__ = [
     "ConfigError", "DEFAULTS", "resolve", "validate", "load",
     "SizeEstimate", "estimate_sizes", "count_neurons", "config_hash",
-    "derived_retina_neuron_count",
+    "derived_retina_neuron_count", "drive_headroom_warnings",
     "iter_area_layers",
 ]

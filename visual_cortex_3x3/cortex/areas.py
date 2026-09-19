@@ -250,8 +250,22 @@ def _candidate_pairs(rule: dict[str, Any], a: Any, src_ids: np.ndarray,
         return s, d
 
     if kind == "local_radius":
-        pts_src = a.position_mm[src_ids]
-        pts_dst = a.position_mm[dst_ids]
+        if rule["radius_space"] == "surface":
+            # 층을 가로지르는 투사는 같은 기둥 안에서 깊이를 따라 내려간다.
+            # 깊이를 포함한 3D 거리로 재면 층 간격보다 작은 반경에서는 후보가
+            # 하나도 나오지 않으므로, 표면 좌표(u,v) 위의 접선 거리로 잰다.
+            pts_src = a.surface_uv_mm[src_ids]
+            pts_dst = a.surface_uv_mm[dst_ids]
+            bad = ~np.isfinite(pts_src).all(axis=1)
+            if bad.any() or not np.isfinite(pts_dst).all():
+                raise ValueError(
+                    f"wiring 규칙 {rule['name']!r} 이 radius_space='surface' 를 쓰지만 "
+                    f"src 또는 dst 뉴런의 surface_uv_mm 이 정의되어 있지 않다 "
+                    f"(피질이 아닌 영역일 수 있다). radius_space 를 'cortical_3d' 로 "
+                    f"두거나 rf_knn 을 쓰라.")
+        else:
+            pts_src = a.position_mm[src_ids]
+            pts_dst = a.position_mm[dst_ids]
         tree = cKDTree(pts_src)
         neigh = tree.query_ball_point(pts_dst, r=float(rule["radius_mm"]))
         s_list, d_list = [], []

@@ -338,15 +338,34 @@ def check_05_lif(cfg: dict[str, Any], model: Any) -> Check:
     c = Check(5, "LIF 누설·단일 펄스·불응기·구획 결합·dt 수렴")
     tcfg = _tiny_cfg(cfg, "conductance_lif")
 
-    # (a) 무입력 누설: EL 에서 출발하면 EL 에 머문다
+    # (a) 무입력 누설: EL 아닌 값에서 출발하면 EL 로 돌아간다.
+    #     고정된 스텝 수로 자르면 막시간상수에 따라 통과/실패가 갈리므로,
+    #     허용오차 아래로 내려가는 데 필요한 스텝 수를 닫힌 해에서 구해 쓴다.
     pop, table, ids = _tiny_network(tcfg)
     eng = _tiny_engine(tcfg, pop, table, ids)
-    pop.arrays.V_mV[2, 0] = -60.0
+    a = pop.arrays
+    v_start = -60.0
+    a.V_mV[2, 0] = v_start
     eng.set_external_drive(None)
-    for _ in range(50):
+    dt_ms = float(tcfg["engine"]["dt_ms"])
+    EL = float(a.EL_mV[2, 0])
+    tau_ms = float(a.C_pF[2, 0]) / float(a.gL_nS[2, 0])    # pF / nS = ms
+    tol_mV = 0.5
+    # 후향 오일러 누설의 닫힌 해: V_n = EL + (V0-EL) * (1 + dt/tau)^(-n)
+    decay = 1.0 + dt_ms / tau_ms
+    n_steps = int(np.ceil(np.log(abs(v_start - EL) / (0.1 * tol_mV))
+                          / np.log(decay)))
+    for _ in range(n_steps):
         eng.step()
-    v = float(pop.arrays.V_mV[2, 0])
-    c.expect(abs(v - (-70.0)) < 0.5, "무입력 시 막전위가 EL 로 수렴한다", V=v)
+    v = float(a.V_mV[2, 0])
+    predicted = EL + (v_start - EL) * decay ** (-n_steps)
+    c.expect(abs(v - EL) < tol_mV,
+             f"무입력 시 막전위가 EL 로 수렴한다 (tau={tau_ms:g} ms, "
+             f"{n_steps} 스텝 = {n_steps * dt_ms:g} ms)",
+             V=v, EL_mV=EL, tau_ms=tau_ms, n_steps=n_steps)
+    c.expect(abs(v - predicted) < 1e-9,
+             "무입력 누설이 후향 오일러 닫힌 해와 정확히 일치한다",
+             V=v, predicted_mV=predicted)
     c.expect(np.all(np.isfinite(pop.arrays.V_mV)), "막전위가 유한하다")
 
     # (b) 단일 펄스 EPSP
@@ -626,6 +645,7 @@ def check_11_zero_correction(cfg: dict[str, Any], model: Any) -> Check:
         eng = Engine(tcfg, anat, table, log, plasticity=plast)
         w0 = table.weight.copy()
         th0 = pop.arrays.threshold.copy()
+        v_soma: list[float] = []
         for s in range(20):
             pop.arrays.Iext_pA[2, COMPARTMENT_INDEX["apical"]] = context_current_pA
             if s % 5 == 0:
@@ -633,13 +653,43 @@ def check_11_zero_correction(cfg: dict[str, Any], model: Any) -> Check:
             else:
                 eng.set_external_drive(None)
             eng.step()
+            v_soma.append(float(pop.arrays.V_mV[2, 0]))
         return {
             "spikes": int(pop.arrays.spike_count.sum()),
             "dw": table.weight - w0,
             "dtheta": pop.arrays.threshold - th0,
+            "V_soma_mV": np.asarray(v_soma),
             "teacher_term_total": float(plast.total_weight_delta),
             "theta_term_total": float(plast.total_theta_delta),
         }
+
+    def context_current_for_threshold(pop: NeuronPopulation) -> float:
+        """정상상태에서 soma 가 임계를 넘게 하는 apical 전류 [pA].
+
+        3구획 정상상태 (u = V - EL) ::
+
+            basal :  gL_b u_b + g_cb (u_b - u_s) = 0
+            apical:  gL_a u_a + g_ca (u_a - u_s) = I
+            soma  :  gL_s u_s + g_cb (u_s - u_b) + g_ca (u_s - u_a) = 0
+
+        를 풀면 ``u_s = (g_ca / a) * I / D`` 이다
+        (``a = gL_a + g_ca``, ``b = gL_b + g_cb``,
+        ``D = gL_s + g_cb - g_cb^2/b + g_ca - g_ca^2/a``).
+        고정된 크기를 쓰면 dt·세포 파라미터가 바뀔 때 검사가 조용히 무력해지므로
+        필요한 전류를 여기서 직접 계산한다.
+        """
+        a_ = pop.arrays
+        i = 2
+        gL_s, gL_b, gL_a = (float(a_.gL_nS[i, k]) for k in range(3))
+        g_cb = float(a_.g_couple_nS[i, COMPARTMENT_INDEX["basal"]])
+        g_ca = float(a_.g_couple_nS[i, COMPARTMENT_INDEX["apical"]])
+        a_sum = gL_a + g_ca
+        b_sum = gL_b + g_cb
+        D = gL_s + g_cb - g_cb ** 2 / b_sum + g_ca - g_ca ** 2 / a_sum
+        need_mV = float(a_.threshold[i]) - float(a_.EL_mV[i, 0])
+        # 20 스텝은 정상상태에 완전히 도달하지 않고 발화 후 재설정도 있으므로
+        # 여유 계수 3 을 곱한다.
+        return 3.0 * need_mV * D * a_sum / g_ca
 
     free = run_once(0.0)
     guided_zero = run_once(0.0)
@@ -651,12 +701,29 @@ def check_11_zero_correction(cfg: dict[str, Any], model: Any) -> Check:
     c.expect(bool(np.array_equal(free["dtheta"], guided_zero["dtheta"])),
              "0교정에서 임계값 변화가 비트 단위로 같다")
 
-    guided_nonzero = run_once(300.0)
+    # (a) 작은 문맥 전류도 막전위에 측정 가능한 효과를 남긴다.
+    probe_pop, _, _ = _tiny_network(tcfg, exc_w=3.0)
+    probe_pop.arrays.has_compartment[2, :] = True
+    probe_pop.arrays.g_couple_nS[2, COMPARTMENT_INDEX["apical"]] = 10.0
+    probe_pop.arrays.g_couple_nS[2, COMPARTMENT_INDEX["basal"]] = 8.0
+    strong_pA = context_current_for_threshold(probe_pop)
+    weak_pA = 0.1 * strong_pA
+    guided_weak = run_once(weak_pA)
+    dv = float(np.max(np.abs(guided_weak["V_soma_mV"] - free["V_soma_mV"])))
+    c.expect(dv > 1e-6,
+             "0 이 아닌 문맥 입력은 soma 막전위를 실제로 바꾼다 "
+             "(L1/apical 경로가 끊겨 있지 않다)",
+             context_pA=weak_pA, max_dV_mV=dv)
+
+    # (b) 임계를 넘길 만큼 큰 문맥 전류는 발화와 학습까지 바꾼다.
+    guided_nonzero = run_once(strong_pA)
     c.expect(guided_nonzero["spikes"] != free["spikes"]
              or not np.array_equal(guided_nonzero["dw"], free["dw"]),
              "0 이 아닌 문맥 입력은 실제로 활동/학습에 영향을 준다 "
              "(L1/apical 경로가 측정 가능한 효과를 갖는다)",
-             free_spikes=free["spikes"], guided_spikes=guided_nonzero["spikes"])
+             context_pA=strong_pA, free_spikes=free["spikes"],
+             guided_spikes=guided_nonzero["spikes"],
+             abs_dw_sum=float(np.abs(guided_nonzero["dw"] - free["dw"]).sum()))
 
     c.details = {
         "free": {k: (v.tolist() if isinstance(v, np.ndarray) else v)
@@ -813,7 +880,7 @@ def run_all(cfg: dict[str, Any], recorder: Any, package_root: Path,
                                0.5 * cfg["retina"]["image"]["max_side_px"],
                                0.5 * cfg["retina"]["image"]["max_side_px"],
                                0.5 * cfg["retina"]["image"]["max_side_px"], 3.0, 0.0)],
-        source="validation_builtin")
+        source="validation_builtin", sampler=model.sampler)
 
     results: list[dict[str, Any]] = []
     n_pass = n_fail = n_skip = 0

@@ -5,7 +5,8 @@
     "species_assumption": "primate_visual_cortex_model",
     "notes": [
       "뉴런 수·층 두께·연결 확률은 모형 파라미터다. 출처가 있는 측정값이 아니다.",
-      "sum_threshold 는 무차원 합산 모델이며 생물학적 막전위 모델이 아니다."
+      "sum_threshold 는 무차원 합산 모델이며 생물학적 막전위 모델이 아니다.",
+      "sum_threshold 는 무차원 합산이다. 최대 입력의 한 구간 기여 (max_rate_hz * dt_ms/1000 * sum_mode_scale)가 망막 세포의 sum_threshold_theta 를 넘어야 회로가 침묵하지 않는다. sum_mode_scale=40 이면 최대 입력에서 2.0 (임계 0.35)이고 균일 배경에서는 여전히 0 이다."
     ]
   },
   "seeds": {"master": 20240101},
@@ -81,7 +82,8 @@
     "dog": {"center_sigma_px": 1.0, "surround_sigma_px": 3.0, "truncate": 4.0,
             "boundary_mode": "reflect", "normalize_each_kernel_to_unit_sum": true},
     "drive": {"mode": "rate", "max_rate_hz": 50.0, "gain": 1.0,
-              "baseline_rate_hz": 0.0, "current_per_hz_pA": 2.0, "sum_mode_scale": 1.0}
+              "baseline_rate_hz": 0.0, "current_per_hz_pA": 2.0,
+              "sum_mode_scale": 40.0}
   },
   "retinotopy": {
     "mapping": "log_polar",
@@ -187,7 +189,7 @@
                                       "cell_type": ["spiny_stellate"]},
        "dst": {"area": "V1", "layer": ["L2", "L3"], "cell_type": ["pyramidal"]},
        "target_compartment": "basal", "receptor": "AMPA", "rule": "local_radius",
-       "radius_mm": 0.5, "k": 8, "probability": 0.6,
+       "radius_mm": 0.5, "radius_space": "surface", "k": 8, "probability": 0.6,
        "weight": {"dist": "lognormal", "median": 0.45, "sigma": 0.3,
                   "min": 0.0, "max": 3.0},
        "conduction_velocity_mm_per_ms": 0.2, "synaptic_delay_ms": 0.8,
@@ -208,7 +210,7 @@
                                       "cell_type": ["pyramidal"]},
        "dst": {"area": "V1", "layer": ["L5"]},
        "target_compartment": "basal", "receptor": "AMPA", "rule": "local_radius",
-       "radius_mm": 0.6, "k": 4, "probability": 0.5,
+       "radius_mm": 0.6, "radius_space": "surface", "k": 4, "probability": 0.5,
        "weight": {"dist": "lognormal", "median": 0.35, "sigma": 0.3,
                   "min": 0.0, "max": 3.0},
        "conduction_velocity_mm_per_ms": 0.2, "synaptic_delay_ms": 0.9},
@@ -216,7 +218,7 @@
       {"name": "V1_L5->L6", "src": {"area": "V1", "layer": ["L5"]},
        "dst": {"area": "V1", "layer": ["L6"]},
        "target_compartment": "basal", "receptor": "AMPA", "rule": "local_radius",
-       "radius_mm": 0.6, "k": 4, "probability": 0.5,
+       "radius_mm": 0.6, "radius_space": "surface", "k": 4, "probability": 0.5,
        "weight": {"dist": "lognormal", "median": 0.3, "sigma": 0.3,
                   "min": 0.0, "max": 3.0},
        "conduction_velocity_mm_per_ms": 0.2, "synaptic_delay_ms": 0.9},
@@ -233,7 +235,7 @@
       {"name": "V1_L5->L1_inh", "src": {"area": "V1", "layer": ["L5"]},
        "dst": {"area": "V1", "layer": ["L1"]},
        "target_compartment": "soma", "receptor": "AMPA", "rule": "local_radius",
-       "radius_mm": 0.8, "k": 3, "probability": 0.5,
+       "radius_mm": 0.8, "radius_space": "surface", "k": 3, "probability": 0.5,
        "weight": {"dist": "lognormal", "median": 0.25, "sigma": 0.3,
                   "min": 0.0, "max": 2.0},
        "conduction_velocity_mm_per_ms": 0.2, "synaptic_delay_ms": 1.0,
@@ -242,7 +244,7 @@
       {"name": "V1_L1_inh->L2L3_apical", "src": {"area": "V1", "layer": ["L1"]},
        "dst": {"area": "V1", "layer": ["L2", "L3"], "cell_type": ["pyramidal"]},
        "target_compartment": "apical", "receptor": "GABA_A", "rule": "local_radius",
-       "radius_mm": 0.8, "k": 5, "probability": 0.5,
+       "radius_mm": 0.8, "radius_space": "surface", "k": 5, "probability": 0.5,
        "weight": {"dist": "lognormal", "median": 0.3, "sigma": 0.3,
                   "min": 0.0, "max": 2.0},
        "conduction_velocity_mm_per_ms": 0.15, "synaptic_delay_ms": 0.8,

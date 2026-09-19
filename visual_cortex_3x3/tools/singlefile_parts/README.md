@@ -5,10 +5,10 @@
 
 | 파일 | 내용 |
 |---|---|
-| `builtin_configs.py` | 내장 설정용 공통 헬퍼(`_rule`, `_cortical_area`, `_local_microcircuit`, `_feedforward`, `_feedback`)와 세포 유형 표 |
+| `builtin_configs.py` | 내장 설정용 공통 헬퍼(`_rule`, `_cortical_area`, `_local_microcircuit`, `_feedforward`, `_feedback`)와 세포 유형 표. `_rule(radius_space=...)` 로 층간 규칙의 거리 공간을 지정한다 |
 | `builtin_minimal.py` | `configs/minimal.json` 을 그대로 옮긴 파이썬 리터럴 |
 | `builtin_rest.py` | v1_small / hierarchy_small / megapixel_input 구성 함수와 `BUILTIN_CONFIGS` |
-| `menu_and_entry.py` | 단일 파일용 한국어 메뉴, `selftest`, 진입점 |
+| `menu_and_entry.py` | 단일 파일용 한국어 메뉴(`A)` 전체 자동 실행 포함), `selftest`, 진입점 |
 | `patches/<태그>_old.txt` / `_new.txt` | 병합 후 치환할 원본/대체 텍스트 쌍 |
 
 패치 태그:
@@ -25,3 +25,5 @@
 | i | 쓰이지 않는 `TYPE_CHECKING` import 제거 |
 
 병합 결과가 원본 설정과 같은지는 `python cortex_all_in_one.py selftest` 로 확인한다.
+이 조각 파일들을 고치면 **반드시 `selftest` 를 다시 돌려라.** `configs/*.json`
+과의 sha256 대조가 어긋나면 바로 드러난다.

@@ -813,6 +813,7 @@
         "rule": "local_radius",
         "k": 8,
         "radius_mm": 0.45,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.5,
         "weight": {
@@ -1144,6 +1145,7 @@
         "rule": "local_radius",
         "k": 5,
         "radius_mm": 0.6,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.45,
         "weight": {
@@ -1184,6 +1186,7 @@
         "rule": "local_radius",
         "k": 4,
         "radius_mm": 0.6,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.45,
         "weight": {
@@ -1224,6 +1227,7 @@
         "rule": "local_radius",
         "k": 4,
         "radius_mm": 0.6,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.35,
         "weight": {
@@ -1264,6 +1268,7 @@
         "rule": "local_radius",
         "k": 3,
         "radius_mm": 0.9,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.45,
         "weight": {
@@ -1306,6 +1311,7 @@
         "rule": "local_radius",
         "k": 6,
         "radius_mm": 0.9,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.5,
         "weight": {
@@ -1347,6 +1353,7 @@
         "rule": "local_radius",
         "k": 8,
         "radius_mm": 0.45,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.5,
         "weight": {
@@ -1678,6 +1685,7 @@
         "rule": "local_radius",
         "k": 5,
         "radius_mm": 0.6,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.45,
         "weight": {
@@ -1718,6 +1726,7 @@
         "rule": "local_radius",
         "k": 4,
         "radius_mm": 0.6,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.45,
         "weight": {
@@ -1758,6 +1767,7 @@
         "rule": "local_radius",
         "k": 4,
         "radius_mm": 0.6,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.35,
         "weight": {
@@ -1798,6 +1808,7 @@
         "rule": "local_radius",
         "k": 3,
         "radius_mm": 0.9,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.45,
         "weight": {
@@ -1840,6 +1851,7 @@
         "rule": "local_radius",
         "k": 6,
         "radius_mm": 0.9,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.5,
         "weight": {
@@ -1881,6 +1893,7 @@
         "rule": "local_radius",
         "k": 8,
         "radius_mm": 0.45,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.5,
         "weight": {
@@ -2212,6 +2225,7 @@
         "rule": "local_radius",
         "k": 5,
         "radius_mm": 0.6,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.45,
         "weight": {
@@ -2252,6 +2266,7 @@
         "rule": "local_radius",
         "k": 4,
         "radius_mm": 0.6,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.45,
         "weight": {
@@ -2292,6 +2307,7 @@
         "rule": "local_radius",
         "k": 4,
         "radius_mm": 0.6,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.35,
         "weight": {
@@ -2332,6 +2348,7 @@
         "rule": "local_radius",
         "k": 3,
         "radius_mm": 0.9,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.45,
         "weight": {
@@ -2374,6 +2391,7 @@
         "rule": "local_radius",
         "k": 6,
         "radius_mm": 0.9,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.5,
         "weight": {
@@ -2415,6 +2433,7 @@
         "rule": "local_radius",
         "k": 8,
         "radius_mm": 0.45,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.5,
         "weight": {
@@ -2746,6 +2765,7 @@
         "rule": "local_radius",
         "k": 5,
         "radius_mm": 0.6,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.45,
         "weight": {
@@ -2786,6 +2806,7 @@
         "rule": "local_radius",
         "k": 4,
         "radius_mm": 0.6,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.45,
         "weight": {
@@ -2826,6 +2847,7 @@
         "rule": "local_radius",
         "k": 4,
         "radius_mm": 0.6,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.35,
         "weight": {
@@ -2866,6 +2888,7 @@
         "rule": "local_radius",
         "k": 3,
         "radius_mm": 0.9,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.45,
         "weight": {
@@ -2908,6 +2931,7 @@
         "rule": "local_radius",
         "k": 6,
         "radius_mm": 0.9,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.5,
         "weight": {
@@ -2949,6 +2973,7 @@
         "rule": "local_radius",
         "k": 8,
         "radius_mm": 0.45,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.5,
         "weight": {
@@ -3280,6 +3305,7 @@
         "rule": "local_radius",
         "k": 5,
         "radius_mm": 0.6,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.45,
         "weight": {
@@ -3320,6 +3346,7 @@
         "rule": "local_radius",
         "k": 4,
         "radius_mm": 0.6,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.45,
         "weight": {
@@ -3360,6 +3387,7 @@
         "rule": "local_radius",
         "k": 4,
         "radius_mm": 0.6,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.35,
         "weight": {
@@ -3400,6 +3428,7 @@
         "rule": "local_radius",
         "k": 3,
         "radius_mm": 0.9,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.45,
         "weight": {
@@ -3442,6 +3471,7 @@
         "rule": "local_radius",
         "k": 6,
         "radius_mm": 0.9,
+        "radius_space": "surface",
         "rf_match_sigma_deg": 0.5,
         "probability": 0.5,
         "weight": {

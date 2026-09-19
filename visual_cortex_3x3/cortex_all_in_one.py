@@ -50,6 +50,7 @@ import hashlib
 import json
 import os
 import platform
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -391,6 +392,13 @@ _WIRING_TEMPLATE: dict[str, Any] = {
     "rule": "rf_knn",                      # rf_knn | local_radius | all_to_all_sampled
     "k": 12,                               # rf_knn 후보 수
     "radius_mm": 0.3,                      # local_radius 반경 (피질 mm)
+    # local_radius 의 거리를 어느 공간에서 재는가.
+    #   cortical_3d : 깊이를 포함한 3D 거리 (같은 층 안의 수평 연결용)
+    #   surface     : 피질 표면 좌표 (u,v) 위의 접선 거리. 깊이 차이를 무시한다.
+    #                 층을 가로지르는 수직(층간) 투사는 같은 기둥 안에서 깊이를
+    #                 따라 내려가므로 이쪽이 맞다. 지연 계산은 어느 경우에도
+    #                 3D 직선 거리를 쓴다 (축삭이 실제로 지나는 길이).
+    "radius_space": "cortical_3d",         # cortical_3d | surface
     "rf_match_sigma_deg": 0.4,             # 시야 위치 대응 허용폭
     "probability": 0.5,                    # 후보 중 실제로 만들 확률
     "max_synapses_per_target": 0,          # 0 이면 제한 없음
@@ -626,6 +634,9 @@ DEFAULTS: dict[str, Any] = {
     "experiment": {
         "protocol": "single_pass",           # single_pass | sweep | train_dev_test
         "stimuli": [],                       # stimuli.py 가 해석하는 명세 목록
+        # 생성된 자극 수를 앞에서부터 이 개수로 자른다 (0 이면 자르지 않는다).
+        # 빠른 점검용이며, 자른 사실은 manifest 와 요약에 기록된다.
+        "max_stimuli": 0,
         "n_samples": 1,
         "splits": {"train": 0.6, "dev": 0.2, "test": 0.2, "stratified": True},
         "conditions": [],                    # 대조군 정의
@@ -823,6 +834,9 @@ def validate_config(cfg: dict[str, Any]) -> None:
                  f"{tag}: 알 수 없는 target_compartment")
         _require(r["rule"] in ("rf_knn", "local_radius", "all_to_all_sampled"),
                  f"{tag}: 알 수 없는 rule {r['rule']!r}")
+        _require(r["radius_space"] in ("cortical_3d", "surface"),
+                 f"{tag}: 알 수 없는 radius_space {r['radius_space']!r} "
+                 f"(cortical_3d 또는 surface)")
         _require(0.0 <= r["probability"] <= 1.0, f"{tag}: probability 는 [0,1]")
         _require(r["conduction_velocity_mm_per_ms"] > 0, f"{tag}: 전도속도는 양수")
         _require(r["synaptic_delay_ms"] >= 0, f"{tag}: 시냅스 지연은 0 이상")
@@ -892,6 +906,8 @@ def validate_config(cfg: dict[str, Any]) -> None:
              "recording.state_sample_every_steps 는 1 이상")
 
     _require(cfg["wiring"]["max_total_synapses"] > 0, "wiring.max_total_synapses 는 양수")
+    _require(int(cfg["experiment"]["max_stimuli"]) >= 0,
+             "experiment.max_stimuli 는 0 이상 (0 이면 자르지 않는다)")
 
 
 def load_config(path: str | Path) -> dict[str, Any]:
@@ -1032,6 +1048,60 @@ def config_hash(cfg: dict[str, Any]) -> str:
     import hashlib
     payload = json.dumps(cfg, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def drive_headroom_warnings(cfg: dict[str, Any]) -> list[str]:
+    """망막 구동이 자기 임계에 닿을 수 있는지 **실행 전에** 확인한다.
+
+    최대 입력에서도 망막 뉴런이 임계를 못 넘으면 전체 회로가 통째로 침묵한다.
+    그 상태는 오류 없이 "스파이크 0건" 으로만 나타나므로 읽는 사람이 모형의
+    결론으로 오해하기 쉽다. 여기서 한도를 손으로 계산해 경고를 만든다.
+    설정을 강제로 막지는 않는다 (의도적으로 약한 구동을 볼 수도 있다).
+    """
+    out: list[str] = []
+    drive = cfg["retina"]["drive"]
+    eng = cfg["engine"]
+    max_rate = (float(drive["baseline_rate_hz"])
+                + float(drive["gain"]) * float(drive["max_rate_hz"]))
+    # 망막 영역에 실제로 배치된 세포 유형만 본다.
+    types: set[str] = set()
+    for a in cfg["anatomy"]["areas"].values():
+        if a["kind"] != "retina":
+            continue
+        for frac in a["cell_type_fractions"].values():
+            types.update(k for k, v in frac.items() if float(v) > 0.0)
+    if not types:
+        return out
+
+    if eng["mode"] == "sum_threshold":
+        contrib = (max_rate * float(eng["dt_ms"]) / 1000.0
+                   * float(drive["sum_mode_scale"])
+                   * int(eng["sum_threshold_interval_steps"]))
+        for name in sorted(types):
+            theta = float(cfg["cell_types"][name]["sum_threshold_theta"])
+            if contrib < theta:
+                out.append(
+                    f"망막 세포 유형 {name!r} 이 최대 입력에서도 발화하지 못한다: "
+                    f"한 구간 최대 기여 {contrib:.4g} < 임계 {theta:.4g}. "
+                    f"retina.drive.sum_mode_scale 을 키우거나 "
+                    f"engine.sum_threshold_interval_steps 를 늘려라 "
+                    f"(지금 설정으로 실행하면 전체 회로가 침묵한다).")
+        return out
+
+    i_max_pA = max_rate * float(drive["current_per_hz_pA"])
+    for name in sorted(types):
+        ct = cfg["cell_types"][name]
+        gL = float(ct["gL_nS"]["soma"])
+        need_mV = float(ct["V_th_mV"]) - float(ct["EL_mV"]["soma"])
+        i_need_pA = gL * need_mV                      # nS * mV = pA
+        if i_max_pA < i_need_pA:
+            out.append(
+                f"망막 세포 유형 {name!r} 이 최대 입력에서도 발화하지 못한다: "
+                f"최대 전류 {i_max_pA:.4g} pA < 임계까지 필요한 정상상태 전류 "
+                f"{i_need_pA:.4g} pA (gL {gL:g} nS x {need_mV:g} mV). "
+                f"retina.drive.current_per_hz_pA 또는 max_rate_hz 를 키워라 "
+                f"(지금 설정으로 실행하면 전체 회로가 침묵한다).")
+    return out
 
 
 def iter_area_layers(cfg: dict[str, Any]) -> Iterable[tuple[str, str, int]]:
@@ -1696,6 +1766,24 @@ class NeuronRecord:
             "dynamic_state": self.dynamic_state.snapshot(),
             "metadata": self.metadata.to_dict(),
         }
+
+
+# ``frozen=True`` 가 만든 ``__setattr__`` 은 property setter 까지 막는다.
+# 식별 필드(population, neuron_id)는 계속 막되, 3x3 기록 인터페이스에서 쓰기가
+# 정의된 칸(threshold, output_gain_P)은 타입 배열에 바로 쓰게 열어 준다.
+# dataclass 는 클래스 본문 안의 ``__setattr__`` 정의를 거부하므로 여기서 건다.
+_FROZEN_RECORD_SETATTR = NeuronRecord.__setattr__
+
+
+def _record_setattr(self: NeuronRecord, name: str, value: Any) -> None:
+    prop = getattr(type(self), name, None)
+    if isinstance(prop, property) and prop.fset is not None:
+        prop.fset(self, value)
+        return
+    _FROZEN_RECORD_SETATTR(self, name, value)
+
+
+NeuronRecord.__setattr__ = _record_setattr
 
 
 class NeuronPopulation:
@@ -2681,26 +2769,62 @@ class RetinaEncoder:
 
     # ------------------------------------------------------------------
     def fit_normalization(self, images: Sequence[np.ndarray], percentile: float = 99.0,
-                          source: str = "train") -> dict[str, Any]:
+                          source: str = "train", sampler: Any = None,
+                          min_scale_ratio: float = 1e-3) -> dict[str, Any]:
         """채널별 스케일을 **훈련 영상으로만** 추정한다 (부작용: self.scale 설정).
 
         dev/test 영상으로 다시 추정하지 않는다. 추정에 쓴 분할 이름을 기록한다.
+
+        Parameters
+        ----------
+        sampler : SamplingGrid 샘플러 또는 None
+            주면 ``(C,S)`` **격자 샘플값**에서 스케일을 추정한다. 실행 경로가
+            ``normalize`` 를 격자 샘플에 적용하므로 이쪽이 맞다. 불균일 샘플링의
+            저역통과가 값을 크게 줄이기 때문에, 영상 해상도에서 추정한 계수를
+            격자 샘플에 쓰면 구동이 수십 배 약해져 망막이 통째로 침묵한다.
+            None 이면 영상 해상도 ``(C,H,W)`` 에서 추정한다 (옛 동작).
+        min_scale_ratio : float
+            채널 스케일의 하한을 ``min_scale_ratio * max(scale)`` 으로 둔다.
+            신호가 없는 채널의 수치 잔차가 1 근처로 증폭되어 망막을 구동하는
+            것을 막는다. 바닥에 걸린 채널 번호는 반환값에 남는다.
         """
         if not images:
             raise ValueError("정규화 추정에 쓸 영상이 없다")
         acc: list[np.ndarray] = []
         for img in images:
             out = self.encode(img)
+            if sampler is not None:
+                values, _ = sampler.sample(out.channels)
+                acc.append(np.asarray(values, dtype=np.float64))
+                continue
             acc.append(out.channels.reshape(out.channels.shape[0], -1))
         allv = np.concatenate(acc, axis=1)
-        scale = np.percentile(np.where(allv > 0, allv, np.nan), percentile, axis=1)
+        # 0 인 화소를 빼고 백분위를 잡는다. np.percentile 은 NaN 이 하나라도
+        # 있으면 NaN 을 돌려주므로 반드시 nanpercentile 을 써야 한다
+        # (그렇지 않으면 모든 채널이 degenerate 로 떨어져 스케일이 1.0 이 되고
+        #  정규화가 통째로 무효가 된다).
+        positive = np.where(allv > 0, allv, np.nan)
+        all_nan = ~np.isfinite(positive).any(axis=1)
+        scale = np.full(positive.shape[0], np.nan, dtype=np.float64)
+        if (~all_nan).any():
+            scale[~all_nan] = np.nanpercentile(positive[~all_nan], percentile, axis=1)
         scale = np.where(np.isfinite(scale) & (scale > 0), scale, 1.0)
+        # 신호가 사실상 없는 채널(예: 회색조 자극에서의 색 대립 채널)은 자기
+        # 백분위가 수치 잔차 수준이라 정규화하면 값이 1 근처까지 증폭된다.
+        # 그러면 내용이 없는 채널이 가장 센 채널과 같은 세기로 망막을 구동한다.
+        # 가장 큰 스케일의 일정 비율을 바닥으로 두어 이 증폭을 막는다.
+        floor = float(min_scale_ratio) * float(np.max(scale))
+        floored = [i for i, v in enumerate(scale) if v < floor]
+        scale = np.maximum(scale, floor)
         self.scale = scale.astype(np.float64)
         self.normalization_fitted = True
         self.normalization_source = source
         return {
             "percentile": float(percentile),
             "source_split": source,
+            "fit_representation": "grid_samples" if sampler is not None else "image_pixels",
+            "min_scale_ratio": float(min_scale_ratio),
+            "floored_channels": floored,
             "n_images": len(images),
             "scale": self.scale.tolist(),
             "degenerate_channels": [i for i, s in enumerate(self.scale) if s == 1.0],
@@ -2709,6 +2833,10 @@ class RetinaEncoder:
     def normalize(self, channels: np.ndarray) -> np.ndarray:
         """추정한 스케일로 나누고 [0,1] 로 자른다.
 
+        첫 축이 채널 축이면 뒤 축 수는 상관없다. ``(C,H,W)`` 영상 채널과
+        ``(C,S)`` 격자 샘플 모두에 쓸 수 있다. 채널 수가 맞지 않으면 조용히
+        방송(broadcast)해 버리지 않고 오류를 낸다.
+
         스케일을 아직 추정하지 않았다면 오류를 낸다 (조용히 1.0 을 쓰지 않는다).
         """
         if not self.normalization_fitted or self.scale is None:
@@ -2716,7 +2844,13 @@ class RetinaEncoder:
                 "채널 정규화 스케일이 아직 추정되지 않았다. "
                 "RetinaEncoder.fit_normalization(train_images) 를 먼저 호출하라."
             )
-        return np.clip(channels / self.scale[:, None, None], 0.0, 1.0)
+        arr = np.asarray(channels, dtype=np.float64)
+        if arr.ndim < 1 or arr.shape[0] != self.scale.size:
+            raise ValueError(
+                f"normalize() 의 첫 축은 채널 축이어야 한다: 입력 {arr.shape}, "
+                f"채널 수 {self.scale.size}")
+        shape = (self.scale.size,) + (1,) * (arr.ndim - 1)
+        return np.clip(arr / self.scale.reshape(shape), 0.0, 1.0)
 
     def normalization_state(self) -> dict[str, Any]:
         return {
@@ -3858,8 +3992,22 @@ def _candidate_pairs(rule: dict[str, Any], a: Any, src_ids: np.ndarray,
         return s, d
 
     if kind == "local_radius":
-        pts_src = a.position_mm[src_ids]
-        pts_dst = a.position_mm[dst_ids]
+        if rule["radius_space"] == "surface":
+            # 층을 가로지르는 투사는 같은 기둥 안에서 깊이를 따라 내려간다.
+            # 깊이를 포함한 3D 거리로 재면 층 간격보다 작은 반경에서는 후보가
+            # 하나도 나오지 않으므로, 표면 좌표(u,v) 위의 접선 거리로 잰다.
+            pts_src = a.surface_uv_mm[src_ids]
+            pts_dst = a.surface_uv_mm[dst_ids]
+            bad = ~np.isfinite(pts_src).all(axis=1)
+            if bad.any() or not np.isfinite(pts_dst).all():
+                raise ValueError(
+                    f"wiring 규칙 {rule['name']!r} 이 radius_space='surface' 를 쓰지만 "
+                    f"src 또는 dst 뉴런의 surface_uv_mm 이 정의되어 있지 않다 "
+                    f"(피질이 아닌 영역일 수 있다). radius_space 를 'cortical_3d' 로 "
+                    f"두거나 rf_knn 을 쓰라.")
+        else:
+            pts_src = a.position_mm[src_ids]
+            pts_dst = a.position_mm[dst_ids]
         tree = cKDTree(pts_src)
         neigh = tree.query_ball_point(pts_dst, r=float(rule["radius_mm"]))
         s_list, d_list = [], []
@@ -6676,6 +6824,114 @@ def select_recording_neurons(cfg: dict[str, Any], model: Model) -> np.ndarray:
 
 
 # ----------------------------------------------------------------------
+def transmission_headroom(cfg: dict[str, Any], model: "Model") -> dict[str, Any]:
+    """배선 규칙마다 **시냅스 전달이 임계에 닿을 수 있는지** 손계산한다.
+
+    ``conductance_lif`` 모드의 정상상태 근사::
+
+        g_need = gL * (V_th - EL) / (E_rev - V_th)      [nS]
+        g(R)   = deg * w * (tau/1000) * R               [nS]
+        R_need = g_need / (deg * w * tau/1000)          [Hz]
+
+    ``deg`` 는 이 규칙이 표적 뉴런 1개에 만든 평균 시냅스 수, ``w`` 는 평균
+    가중치다. 앞 영역이 낼 수 있는 최대 발화율은 불응기로 막히므로
+    ``1000 / t_ref_ms`` 를 상한으로 쓴다. ``R_need`` 가 그 상한을 넘으면 그
+    단계는 **어떤 입력에도 전달되지 않는다** — 실행은 오류 없이 끝나고 결과만
+    조용히 비게 되므로 여기서 미리 표시한다.
+
+    흥분성 규칙만 본다 (억제는 임계를 넘길 일이 없다). 단일 구획 정상상태
+    근사이므로 정확한 예측이 아니라 **자릿수 점검**이다.
+    """
+    if cfg["engine"]["mode"] != "conductance_lif":
+        return {"applicable": False,
+                "reason_ko": "conductance_lif 모드에서만 계산한다."}
+    a = model.anat.population.arrays
+    t = model.table
+    ids = model.anat.ids
+    rows: list[dict[str, Any]] = []
+    blocked: list[str] = []
+    for r_idx, rule in enumerate(cfg["wiring"]["rules"]):
+        if not rule.get("enabled", True):
+            continue
+        rec = cfg["receptors"][rule["receptor"]]
+        if rec["kind"] != "excitatory":
+            continue
+        sel = t.rule_index == r_idx
+        n = int(sel.sum())
+        if n == 0:
+            continue
+        dst = t.dst_id[sel].astype(np.int64)
+        src = t.src_id[sel].astype(np.int64)
+        targets = np.unique(dst)
+        deg = n / max(1, targets.size)
+        w = float(t.weight[sel].mean())
+        comp = int(np.bincount(t.target_compartment[sel].astype(np.int64)).argmax())
+        gL = float(a.gL_nS[targets, comp].mean())
+        EL = float(a.EL_mV[targets, comp].mean())
+        V_th = float(a.threshold[targets].mean())
+        E_rev = float(rec["E_rev_mV"])
+        tau_s = float(rec["tau_ms"]) / 1000.0
+        driving = E_rev - V_th
+        if driving <= 0.0 or deg <= 0.0 or w <= 0.0:
+            continue
+        g_need = gL * (V_th - EL) / driving
+        rate_need = g_need / (deg * w * tau_s)
+        src_u = np.unique(src)
+        t_ref = float(np.mean(a.t_ref_ms[src_u]))
+        rate_max = 1000.0 / t_ref if t_ref > 0 else float("inf")
+        # 망막은 불응기가 아니라 외부 구동이 상한을 정한다. 실제로 낼 수 없는
+        # 발화율을 근거로 "닿는다" 고 적으면 진단이 무의미해진다.
+        src_area_name = ids.areas.name_of(int(a.area_id[src_u[0]]))
+        if cfg["anatomy"]["areas"][src_area_name]["kind"] == "retina":
+            drive = cfg["retina"]["drive"]
+            rate_max = min(rate_max,
+                           float(drive["baseline_rate_hz"])
+                           + float(drive["gain"]) * float(drive["max_rate_hz"]))
+        ok = rate_need <= rate_max
+        rows.append({
+            "rule": rule["name"], "n_synapses": n,
+            "mean_in_degree": round(deg, 3), "mean_weight_nS": round(w, 4),
+            "g_need_nS": round(g_need, 4),
+            "presyn_rate_needed_hz": round(rate_need, 2),
+            "presyn_rate_max_hz": round(rate_max, 2),
+            "presyn_area": src_area_name,
+            "reachable": bool(ok),
+        })
+        if not ok:
+            blocked.append(rule["name"])
+    return {
+        "applicable": True, "rules": rows, "blocked_rules": blocked,
+        "note_ko": ("단일 구획 정상상태 근사다. 정확한 예측이 아니라 자릿수 "
+                    "점검이며, reachable=false 인 단계는 앞 영역이 최대 속도로 "
+                    "발화해도 표적을 임계까지 올리지 못한다는 뜻이다."),
+    }
+
+
+def silent_area_report(results: Sequence["SampleResult"]) -> dict[str, Any]:
+    """모든 표본에서 한 번도 발화하지 않은 영역을 찾는다.
+
+    앞 영역이 발화했는데 뒤 영역이 전부 침묵했다면 그 사이 전달이 끊긴 것이다.
+    "스파이크 0건" 은 오류 없이 끝나므로 결과를 읽는 사람이 모형의 결론으로
+    오해하기 쉽다. 여기서 명시적으로 남긴다.
+    """
+    totals: dict[str, int] = {}
+    for r in results:
+        for area, n in r.spikes_by_area.items():
+            totals[area] = totals.get(area, 0) + int(n)
+    silent = sorted(k for k, v in totals.items() if v == 0)
+    active = sorted(k for k, v in totals.items() if v > 0)
+    return {
+        "spikes_by_area_total": totals,
+        "silent_areas": silent,
+        "active_areas": active,
+        "all_silent": bool(totals) and not active,
+        "note_ko": ("침묵한 영역이 있으면 시냅스 전달이 임계에 닿는지 "
+                    "manifest 의 transmission_headroom 을 보라. 가중치·발화율 "
+                    "상한이 모자라면 그 단계는 어떤 입력에도 반응하지 않는다."),
+    }
+
+
+# ----------------------------------------------------------------------
 @dataclass
 class SampleResult:
     sample_index: int
@@ -6724,6 +6980,7 @@ class ExperimentRunner:
             warnings.append(
                 f"추정 RAM {est.ram_mb_estimated:.0f} MB 가 한도 "
                 f"{lim['max_ram_mb']} MB 를 넘는다.")
+        warnings.extend(drive_headroom_warnings(self.cfg))
         return {
             "config_name": self.cfg["meta"]["name"],
             "config_sha256": config_hash(self.cfg),
@@ -6739,6 +6996,8 @@ class ExperimentRunner:
 
     # ------------------------------------------------------------------
     def _prepare(self, recorder: RunRecorder) -> Model:
+        for msg in drive_headroom_warnings(self.cfg):
+            recorder.warn(msg)
         rngs = rng_from_config(self.cfg)
         t0 = time.time()
         self.progress("모델을 조립하는 중...")
@@ -6756,6 +7015,13 @@ class ExperimentRunner:
         recorder.manifest["recording"]["selection_criterion"] = (
             self.cfg["recording"]["selection_criterion"]
             or "영역마다 균등 간격으로 뽑은 표본 (recording.selected_neurons 미지정)")
+        head = transmission_headroom(self.cfg, model)
+        recorder.manifest["transmission_headroom"] = head
+        for name in head.get("blocked_rules", []):
+            recorder.warn(
+                f"배선 규칙 {name!r} 은 앞 영역이 최대 속도로 발화해도 표적을 "
+                f"임계까지 올리지 못한다 (manifest 의 transmission_headroom 참조). "
+                f"이 단계 뒤쪽 영역은 어떤 입력에도 침묵할 수 있다.")
         recorder._write_manifest()
         model.engine.recorder = recorder
         return model
@@ -6847,13 +7113,15 @@ class ExperimentRunner:
             model = self._prepare(recorder)
             ckpt = CheckpointManager(recorder, self.cfg["checkpoint"]["keep_last"])
             rng_stim = model.rngs.get("stimulus")
-            stims = generate_stimuli(self.cfg, rng_stim)
+            stims = self._apply_stimulus_cap(
+                generate_stimuli(self.cfg, rng_stim), recorder)
             if not stims:
                 raise ValueError("experiment.stimuli 가 비어 있어 제시할 자극이 없다")
-            recorder.log(f"자극 {len(stims)}개 생성")
+            recorder.log(f"자극 {len(stims)}개 제시 예정")
 
             fit_imgs = [s.frames[0] for s in stims[:min(len(stims), 16)]]
-            norm = model.encoder.fit_normalization(fit_imgs, source="simulate_prefix")
+            norm = model.encoder.fit_normalization(fit_imgs, source="simulate_prefix",
+                                                   sampler=model.sampler)
             recorder.manifest["input_normalization"] = norm
             recorder.manifest["input_normalization"]["note_ko"] = (
                 "simulate 명령은 제시 자극 앞부분으로 정규화 계수를 추정한다. "
@@ -6894,10 +7162,16 @@ class ExperimentRunner:
             self._write_aggregates(recorder, model)
             recorder.manifest["event_log_schema"] = model.event_log.schema()
             recorder.manifest["plasticity_summary"] = model.plasticity.summary()
+            silent = silent_area_report(results)
+            recorder.manifest["silent_areas"] = silent
+            for area in silent["silent_areas"]:
+                recorder.warn(f"영역 {area!r} 이 모든 표본에서 한 번도 발화하지 "
+                              f"않았다. 결과를 모형의 결론으로 읽지 말 것.")
             recorder._write_manifest()
             return {"status": STATUS_COMPLETED, "run_dir": str(self.run_dir),
                     "n_samples": len(results),
-                    "n_events": model.event_log.n_events}
+                    "n_events": model.event_log.n_events,
+                    "silent_areas": silent["silent_areas"]}
 
     # ------------------------------------------------------------------
     def experiment(self) -> dict[str, Any]:
@@ -6912,7 +7186,8 @@ class ExperimentRunner:
                          self.package_root) as recorder:
             model = self._prepare(recorder)
             ckpt = CheckpointManager(recorder, self.cfg["checkpoint"]["keep_last"])
-            stims = generate_stimuli(self.cfg, model.rngs.get("stimulus"))
+            stims = self._apply_stimulus_cap(
+                generate_stimuli(self.cfg, model.rngs.get("stimulus")), recorder)
             splits = split_stimuli(stims, self.cfg, model.rngs.get("split"))
             report = split_report(splits)
             recorder.manifest["splits"] = report
@@ -6920,7 +7195,8 @@ class ExperimentRunner:
                 raise ValueError(f"분할이 겹친다: {report['overlaps']}")
 
             norm = model.encoder.fit_normalization(
-                [s.frames[0] for s in splits["train"]], source="train")
+                [s.frames[0] for s in splits["train"]], source="train",
+                sampler=model.sampler)
             recorder.manifest["input_normalization"] = norm
             recorder.manifest["test_access"] = {
                 "n_test_evaluations": 0,
@@ -6933,6 +7209,7 @@ class ExperimentRunner:
                             "dev": False, "test": False}
             features: dict[str, list[np.ndarray]] = {}
             labels: dict[str, list[str]] = {}
+            all_results: list[SampleResult] = []
             idx = 0
             for split in ("train", "dev", "test"):
                 feats: list[np.ndarray] = []
@@ -6943,6 +7220,7 @@ class ExperimentRunner:
                     before = model.anat.population.arrays.spike_count.copy()
                     r = self._run_sample(model, recorder, st, idx, learn_splits[split])
                     idx += 1
+                    all_results.append(r)
                     recorder.metric(kind="sample", split=split, **r.to_dict())
                     feats.append(self._readout_features(model, before))
                     labs.append(st.label)
@@ -6966,9 +7244,33 @@ class ExperimentRunner:
             recorder.record_events(model.event_log)
             self._write_aggregates(recorder, model)
             recorder.manifest["plasticity_summary"] = model.plasticity.summary()
+            silent = silent_area_report(all_results)
+            recorder.manifest["silent_areas"] = silent
+            for area in silent["silent_areas"]:
+                recorder.warn(f"영역 {area!r} 이 모든 표본에서 한 번도 발화하지 "
+                              f"않았다. 결과를 모형의 결론으로 읽지 말 것.")
             recorder._write_manifest()
             return {"status": STATUS_COMPLETED, "run_dir": str(self.run_dir),
-                    "splits": report["counts"]}
+                    "splits": report["counts"],
+                    "silent_areas": silent["silent_areas"]}
+
+    def _apply_stimulus_cap(self, stims: list[Any], recorder: RunRecorder) -> list[Any]:
+        """``experiment.max_stimuli`` 로 자극 수를 자른다 (0 이면 그대로).
+
+        자른 사실은 manifest 와 경고 로그에 남긴다. 조용히 줄이지 않는다.
+        """
+        cap = int(self.cfg["experiment"]["max_stimuli"])
+        if cap <= 0 or len(stims) <= cap:
+            recorder.manifest["stimulus_cap"] = {"cap": cap, "n_generated": len(stims),
+                                                 "n_used": len(stims), "truncated": False}
+            recorder._write_manifest()
+            return list(stims)
+        recorder.warn("experiment.max_stimuli 로 자극 목록을 앞에서부터 잘랐다.",
+                      n_generated=len(stims), n_used=cap)
+        recorder.manifest["stimulus_cap"] = {"cap": cap, "n_generated": len(stims),
+                                             "n_used": cap, "truncated": True}
+        recorder._write_manifest()
+        return list(stims[:cap])
 
     def _readout_features(self, model: Model, spikes_before: np.ndarray) -> np.ndarray:
         """IT(또는 지정 영역) 집단 활동을 특징 벡터로 만든다.
@@ -7046,10 +7348,12 @@ class ExperimentRunner:
                 "allow_mismatch": bool(allow_mismatch),
             }
             recorder._write_manifest()
-            stims = generate_stimuli(self.cfg, model.rngs.get("stimulus"))
+            stims = self._apply_stimulus_cap(
+                generate_stimuli(self.cfg, model.rngs.get("stimulus")), recorder)
             start = int(meta["sample_index"]) + 1
             model.encoder.fit_normalization(
-                [s.frames[0] for s in stims[:min(len(stims), 16)]], source="resume")
+                [s.frames[0] for s in stims[:min(len(stims), 16)]],
+                source="resume", sampler=model.sampler)
             learn = self.cfg["learning"]["mode"] == "stdp_homeostasis"
             for i in range(start, len(stims)):
                 self.progress(f"재개 {i + 1}/{len(stims)} — 중단하려면 Ctrl+C")
@@ -8193,15 +8497,34 @@ def check_05_lif(cfg: dict[str, Any], model: Any) -> Check:
     c = Check(5, "LIF 누설·단일 펄스·불응기·구획 결합·dt 수렴")
     tcfg = _tiny_cfg(cfg, "conductance_lif")
 
-    # (a) 무입력 누설: EL 에서 출발하면 EL 에 머문다
+    # (a) 무입력 누설: EL 아닌 값에서 출발하면 EL 로 돌아간다.
+    #     고정된 스텝 수로 자르면 막시간상수에 따라 통과/실패가 갈리므로,
+    #     허용오차 아래로 내려가는 데 필요한 스텝 수를 닫힌 해에서 구해 쓴다.
     pop, table, ids = _tiny_network(tcfg)
     eng = _tiny_engine(tcfg, pop, table, ids)
-    pop.arrays.V_mV[2, 0] = -60.0
+    a = pop.arrays
+    v_start = -60.0
+    a.V_mV[2, 0] = v_start
     eng.set_external_drive(None)
-    for _ in range(50):
+    dt_ms = float(tcfg["engine"]["dt_ms"])
+    EL = float(a.EL_mV[2, 0])
+    tau_ms = float(a.C_pF[2, 0]) / float(a.gL_nS[2, 0])    # pF / nS = ms
+    tol_mV = 0.5
+    # 후향 오일러 누설의 닫힌 해: V_n = EL + (V0-EL) * (1 + dt/tau)^(-n)
+    decay = 1.0 + dt_ms / tau_ms
+    n_steps = int(np.ceil(np.log(abs(v_start - EL) / (0.1 * tol_mV))
+                          / np.log(decay)))
+    for _ in range(n_steps):
         eng.step()
-    v = float(pop.arrays.V_mV[2, 0])
-    c.expect(abs(v - (-70.0)) < 0.5, "무입력 시 막전위가 EL 로 수렴한다", V=v)
+    v = float(a.V_mV[2, 0])
+    predicted = EL + (v_start - EL) * decay ** (-n_steps)
+    c.expect(abs(v - EL) < tol_mV,
+             f"무입력 시 막전위가 EL 로 수렴한다 (tau={tau_ms:g} ms, "
+             f"{n_steps} 스텝 = {n_steps * dt_ms:g} ms)",
+             V=v, EL_mV=EL, tau_ms=tau_ms, n_steps=n_steps)
+    c.expect(abs(v - predicted) < 1e-9,
+             "무입력 누설이 후향 오일러 닫힌 해와 정확히 일치한다",
+             V=v, predicted_mV=predicted)
     c.expect(np.all(np.isfinite(pop.arrays.V_mV)), "막전위가 유한하다")
 
     # (b) 단일 펄스 EPSP
@@ -8480,6 +8803,7 @@ def check_11_zero_correction(cfg: dict[str, Any], model: Any) -> Check:
         eng = Engine(tcfg, anat, table, log, plasticity=plast)
         w0 = table.weight.copy()
         th0 = pop.arrays.threshold.copy()
+        v_soma: list[float] = []
         for s in range(20):
             pop.arrays.Iext_pA[2, COMPARTMENT_INDEX["apical"]] = context_current_pA
             if s % 5 == 0:
@@ -8487,13 +8811,43 @@ def check_11_zero_correction(cfg: dict[str, Any], model: Any) -> Check:
             else:
                 eng.set_external_drive(None)
             eng.step()
+            v_soma.append(float(pop.arrays.V_mV[2, 0]))
         return {
             "spikes": int(pop.arrays.spike_count.sum()),
             "dw": table.weight - w0,
             "dtheta": pop.arrays.threshold - th0,
+            "V_soma_mV": np.asarray(v_soma),
             "teacher_term_total": float(plast.total_weight_delta),
             "theta_term_total": float(plast.total_theta_delta),
         }
+
+    def context_current_for_threshold(pop: NeuronPopulation) -> float:
+        """정상상태에서 soma 가 임계를 넘게 하는 apical 전류 [pA].
+
+        3구획 정상상태 (u = V - EL) ::
+
+            basal :  gL_b u_b + g_cb (u_b - u_s) = 0
+            apical:  gL_a u_a + g_ca (u_a - u_s) = I
+            soma  :  gL_s u_s + g_cb (u_s - u_b) + g_ca (u_s - u_a) = 0
+
+        를 풀면 ``u_s = (g_ca / a) * I / D`` 이다
+        (``a = gL_a + g_ca``, ``b = gL_b + g_cb``,
+        ``D = gL_s + g_cb - g_cb^2/b + g_ca - g_ca^2/a``).
+        고정된 크기를 쓰면 dt·세포 파라미터가 바뀔 때 검사가 조용히 무력해지므로
+        필요한 전류를 여기서 직접 계산한다.
+        """
+        a_ = pop.arrays
+        i = 2
+        gL_s, gL_b, gL_a = (float(a_.gL_nS[i, k]) for k in range(3))
+        g_cb = float(a_.g_couple_nS[i, COMPARTMENT_INDEX["basal"]])
+        g_ca = float(a_.g_couple_nS[i, COMPARTMENT_INDEX["apical"]])
+        a_sum = gL_a + g_ca
+        b_sum = gL_b + g_cb
+        D = gL_s + g_cb - g_cb ** 2 / b_sum + g_ca - g_ca ** 2 / a_sum
+        need_mV = float(a_.threshold[i]) - float(a_.EL_mV[i, 0])
+        # 20 스텝은 정상상태에 완전히 도달하지 않고 발화 후 재설정도 있으므로
+        # 여유 계수 3 을 곱한다.
+        return 3.0 * need_mV * D * a_sum / g_ca
 
     free = run_once(0.0)
     guided_zero = run_once(0.0)
@@ -8505,12 +8859,29 @@ def check_11_zero_correction(cfg: dict[str, Any], model: Any) -> Check:
     c.expect(bool(np.array_equal(free["dtheta"], guided_zero["dtheta"])),
              "0교정에서 임계값 변화가 비트 단위로 같다")
 
-    guided_nonzero = run_once(300.0)
+    # (a) 작은 문맥 전류도 막전위에 측정 가능한 효과를 남긴다.
+    probe_pop, _, _ = _tiny_network(tcfg, exc_w=3.0)
+    probe_pop.arrays.has_compartment[2, :] = True
+    probe_pop.arrays.g_couple_nS[2, COMPARTMENT_INDEX["apical"]] = 10.0
+    probe_pop.arrays.g_couple_nS[2, COMPARTMENT_INDEX["basal"]] = 8.0
+    strong_pA = context_current_for_threshold(probe_pop)
+    weak_pA = 0.1 * strong_pA
+    guided_weak = run_once(weak_pA)
+    dv = float(np.max(np.abs(guided_weak["V_soma_mV"] - free["V_soma_mV"])))
+    c.expect(dv > 1e-6,
+             "0 이 아닌 문맥 입력은 soma 막전위를 실제로 바꾼다 "
+             "(L1/apical 경로가 끊겨 있지 않다)",
+             context_pA=weak_pA, max_dV_mV=dv)
+
+    # (b) 임계를 넘길 만큼 큰 문맥 전류는 발화와 학습까지 바꾼다.
+    guided_nonzero = run_once(strong_pA)
     c.expect(guided_nonzero["spikes"] != free["spikes"]
              or not np.array_equal(guided_nonzero["dw"], free["dw"]),
              "0 이 아닌 문맥 입력은 실제로 활동/학습에 영향을 준다 "
              "(L1/apical 경로가 측정 가능한 효과를 갖는다)",
-             free_spikes=free["spikes"], guided_spikes=guided_nonzero["spikes"])
+             context_pA=strong_pA, free_spikes=free["spikes"],
+             guided_spikes=guided_nonzero["spikes"],
+             abs_dw_sum=float(np.abs(guided_nonzero["dw"] - free["dw"]).sum()))
 
     c.details = {
         "free": {k: (v.tolist() if isinstance(v, np.ndarray) else v)
@@ -8671,7 +9042,7 @@ def run_all(cfg: dict[str, Any], recorder: Any, package_root: Path,
                                0.5 * cfg["retina"]["image"]["max_side_px"],
                                0.5 * cfg["retina"]["image"]["max_side_px"],
                                0.5 * cfg["retina"]["image"]["max_side_px"], 3.0, 0.0)],
-        source="validation_builtin")
+        source="validation_builtin", sampler=model.sampler)
 
     results: list[dict[str, Any]] = []
     n_pass = n_fail = n_skip = 0
@@ -8703,6 +9074,643 @@ def run_all(cfg: dict[str, Any], recorder: Any, package_root: Path,
 
 
 # ============================================================================
+# 섹션: autorun  —  전체 자동 실행 오케스트레이션
+#   (원래 파일: cortex/autorun.py)
+# ============================================================================
+
+"""autorun.py -- 한 번의 명령으로 전체 과정을 실행하고 **지정한 폴더**에 결과를 쓴다.
+
+메뉴나 대화형 입력 없이 다음 단계를 순서대로 자동 수행한다.
+
+===================  ==========================================================
+단계                 내용
+===================  ==========================================================
+``config_check``     설정 해석·검증, 규모 추정 (실행 없음)
+``validate``         필수 검증 1~14
+``simulate``         자극 제시 시뮬레이션
+``experiment``       train/dev/test 분할 실험 + readout
+``reference``        Rao 참조 모델, 고정 Gabor 대조, explain-neuron, 소거 재실행
+``report``           저장된 기록으로 한국어 보고서 생성
+``figures``          저장된 기록으로 그림 생성
+===================  ==========================================================
+
+결과는 ``<출력폴더>/<설정이름>/<단계>/`` 아래에 쌓이고, 최상위에
+``summary.json``, ``SUMMARY_ko.md``, ``run_all.log`` 가 생긴다.
+
+**실행 정책**: 이 명령은 사용자가 출력 폴더를 명시해 직접 부를 때만 동작한다.
+``--dry-run`` 으로 계획과 규모만 볼 수 있다. 한 단계가 실패해도 나머지는 계속
+진행하고 단계별 상태를 기록한다. 다만 ``validation.stop_experiment_on_failure``
+가 참이고 ``validate`` 가 실패하면 **의존 실험(simulate/experiment)을 중지**한다
+(명세 14절).
+
+이미 ``completed`` 로 끝난 결과 폴더는 **덮어쓰지 않는다**. ``--overwrite`` 를
+주면 기존 폴더를 ``<이름>_old_<UTC>`` 로 옮겨 두고 새로 만든다.
+"""
+
+ALL_STAGES: tuple[str, ...] = (
+    "config_check", "validate", "simulate", "experiment",
+    "reference", "report", "figures",
+)
+
+STAGE_TITLES_KO: dict[str, str] = {
+    "config_check": "설정 해석·검증과 규모 추정",
+    "validate": "필수 검증 1~14",
+    "simulate": "자극 제시 시뮬레이션",
+    "experiment": "train/dev/test 분할 실험",
+    "reference": "Rao 참조 모델·고정 Gabor·뉴런 조회·소거 재실행",
+    "report": "한국어 보고서 생성",
+    "figures": "그림 생성",
+}
+
+
+@dataclass
+class StageResult:
+    """단계 하나의 결과."""
+
+    name: str
+    status: str = "pending"        # completed | failed | skipped | dry_run
+    elapsed_sec: float = 0.0
+    output_dir: str | None = None
+    detail: dict[str, Any] = field(default_factory=dict)
+    error: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "stage": self.name, "title_ko": STAGE_TITLES_KO.get(self.name, ""),
+            "status": self.status, "elapsed_sec": round(self.elapsed_sec, 3),
+            "output_dir": self.output_dir, "detail": self.detail,
+            "error": self.error,
+        }
+
+
+def resolve_backend(cfg: dict[str, Any], choice: str) -> tuple[str, str]:
+    """기록 백엔드를 정한다. ``auto`` 는 h5py 가 있으면 hdf5, 없으면 npz.
+
+    바꾼 경우 그 사실을 문자열로 돌려주어 manifest·요약·터미널에 남긴다.
+    조용히 바꾸지 않는다.
+    """
+    if choice != "auto":
+        return choice, ""
+    wanted = cfg["recording"]["backend"]
+    if wanted != "hdf5":
+        return wanted, ""
+    try:
+        import h5py  # noqa: F401,PLC0415
+    except ImportError:
+        return "npz", (
+            "h5py 가 없어 기록 백엔드를 hdf5 -> npz 로 바꿨다. "
+            "npz 는 메모리에 모았다가 종료 시 저장하므로 대규모 실행에는 맞지 않는다. "
+            "`python -m pip install h5py` 후 --backend hdf5 로 다시 실행하면 된다."
+        )
+    return "hdf5", ""
+
+
+def prepare_config(name_or_path: str, *, backend: str = "auto",
+                   max_stimuli: int = 0, duration_ms: float | None = None,
+                   seed: int | None = None,
+                   loader: Callable[[str], dict[str, Any]] | None = None
+                   ) -> tuple[dict[str, Any], list[str]]:
+    """설정을 읽고 자동 실행용 덮어쓰기를 적용한다. 바꾼 항목을 함께 돌려준다."""
+    cfg = (loader or load_config)(name_or_path)
+    notes: list[str] = []
+    chosen, note = resolve_backend(cfg, backend)
+    if chosen != cfg["recording"]["backend"]:
+        cfg["recording"]["backend"] = chosen
+    if note:
+        notes.append(note)
+    if max_stimuli and max_stimuli > 0:
+        cfg["experiment"]["max_stimuli"] = int(max_stimuli)
+        notes.append(f"자극 수를 앞에서부터 {max_stimuli}개로 제한했다 (--limit-stimuli).")
+    if duration_ms is not None:
+        notes.append(f"engine.duration_ms 를 {cfg['engine']['duration_ms']} -> "
+                     f"{duration_ms} 로 바꿨다 (--duration-ms).")
+        cfg["engine"]["duration_ms"] = float(duration_ms)
+    if seed is not None:
+        notes.append(f"seeds.master 를 {cfg['seeds']['master']} -> {seed} 로 "
+                     f"바꿨다 (--seed).")
+        cfg["seeds"]["master"] = int(seed)
+    validate_config(cfg)
+    return cfg, notes
+
+
+#: 단계별 "끝났다" 표시 파일. ``manifest.json`` 이 없는 단계(RunRecorder 를 쓰지
+#: 않는 단계)도 결과를 덮어쓰지 않도록 각자의 산출물 이름을 적어 둔다.
+_DONE_MARKERS: dict[str, tuple[str, ...]] = {
+    "config_check": ("inspect.json",),
+    "reference": ("reference.json",),
+}
+
+
+def _prepare_dir(path: Path, overwrite: bool,
+                 done_files: Sequence[str] = ()) -> str | None:
+    """결과 폴더를 준비한다. 완료된 기록이 있으면 덮어쓰지 않는다."""
+    if not path.exists():
+        path.mkdir(parents=True, exist_ok=True)
+        return None
+    manifest = path / "manifest.json"
+    done = any((path / name).is_file() for name in done_files)
+    if not done and manifest.is_file():
+        try:
+            done = json.loads(manifest.read_text(encoding="utf-8")).get(
+                "status") == "completed"
+        except json.JSONDecodeError:
+            done = False
+    if not done:
+        return None
+    if not overwrite:
+        raise FileExistsError(
+            f"이미 완료된 결과가 있다: {path}\n"
+            f"  결과를 덮어쓰지 않는다. --overwrite 를 주거나 다른 --out 을 쓰라."
+        )
+    moved = path.with_name(f"{path.name}_old_{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}")
+    shutil.move(str(path), str(moved))
+    path.mkdir(parents=True, exist_ok=True)
+    return str(moved)
+
+
+# ----------------------------------------------------------------------
+def stage_config_check(cfg: dict[str, Any], out: Path, package_root: Path,
+                       command: str) -> dict[str, Any]:
+    runner = ExperimentRunner(cfg, None, command, package_root, execute=False)
+    info = runner.inspect()
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "inspect.json").write_text(
+        json.dumps(info, ensure_ascii=False, indent=1, default=str),
+        encoding="utf-8")
+    return info
+
+
+def stage_validate(cfg: dict[str, Any], out: Path, package_root: Path,
+                   command: str, progress: Callable[[str], None]) -> dict[str, Any]:
+    with RunRecorder(out, cfg, command, package_root) as recorder:
+        result = run_all(cfg, recorder, package_root,
+                                        progress=progress)
+        recorder.metric(kind="validation",
+                        **{k: v for k, v in result.items() if k != "checks"})
+        (out / "validation.json").write_text(
+            json.dumps(result, ensure_ascii=False, indent=1, default=str),
+            encoding="utf-8")
+        if result["n_failed"]:
+            recorder.finish("failed", f"{result['n_failed']}건 실패")
+    return {k: v for k, v in result.items() if k != "checks"}
+
+
+def stage_simulate(cfg: dict[str, Any], out: Path, package_root: Path,
+                   command: str, progress: Callable[[str], None]) -> dict[str, Any]:
+    runner = ExperimentRunner(cfg, out, command, package_root, execute=True,
+                              progress=progress)
+    return runner.simulate()
+
+
+def stage_experiment(cfg: dict[str, Any], out: Path, package_root: Path,
+                     command: str, progress: Callable[[str], None]) -> dict[str, Any]:
+    runner = ExperimentRunner(cfg, out, command, package_root, execute=True,
+                              progress=progress)
+    return runner.experiment()
+
+
+def stage_reference(cfg: dict[str, Any], out: Path, sim_dir: Path | None,
+                    progress: Callable[[str], None]) -> dict[str, Any]:
+    """Rao 참조 모델·고정 Gabor 대조·뉴런 조회·소거 재실행.
+
+    이 네 가지는 simulate/experiment 경로에서 저절로 실행되지 않으므로 여기서
+    따로 돌린다. **서로 다른 엔진의 결과를 섞어 순위를 매기지 않는다.**
+    """
+    out.mkdir(parents=True, exist_ok=True)
+    detail: dict[str, Any] = {}
+    rngs = rng_from_config(cfg)
+    model = build_model(cfg, rngs)
+    stims = generate_stimuli(cfg, rngs.get("stimulus"))
+    cap = int(cfg["experiment"]["max_stimuli"])
+    if cap > 0:
+        stims = stims[:cap]
+    if not stims:
+        return {"skipped": True, "reason_ko": "자극이 없다"}
+    model.encoder.fit_normalization([s.frames[0] for s in stims],
+                                    source="reference", sampler=model.sampler)
+
+    def sampled(img: np.ndarray) -> np.ndarray:
+        values, _ = model.sampler.sample(model.encoder.encode(img).channels)
+        return model.encoder.normalize(values)
+
+    # --- (1) Rao 참조 모델 -------------------------------------------
+    progress("Rao 참조 모델 정착/학습")
+    rao_cfg = cfg["learning"]["rao"]
+    vecs = np.stack([sampled(s.frames[0]).ravel() for s in stims[:8]])
+    rao = RaoModel(n_modules=1, input_dim=int(vecs.shape[1]),
+                   n1=int(rao_cfg["level_sizes"][0]),
+                   n2=int(rao_cfg["level_sizes"][1] if len(rao_cfg["level_sizes"]) > 1
+                          else rao_cfg["level_sizes"][0]),
+                   sigma=float(rao_cfg["sigma"]), sigma_td=float(rao_cfg["sigma_td"]),
+                   alpha=float(rao_cfg["alpha"]), lam=float(rao_cfg["lambda_u"]),
+                   rng=rngs.get("diagnostics"))
+    history: list[dict[str, Any]] = []
+    state = None
+    I = vecs[:1]
+    for i, v in enumerate(vecs):
+        I = v[None, :]
+        state = rao.settle(I, steps=int(rao_cfg["settle_steps"]),
+                           r_step=float(rao_cfg["r_step"]))
+        upd = rao.learn_step(I, state, float(rao_cfg["u_step"]))
+        history.append({"sample": i, **state.errors, **upd})
+    fd = rao.finite_difference_check(I, state.r1, state.r2,
+                                     eps=float(cfg["validation"]["finite_difference_eps"]),
+                                     n_probe=6, rng=rngs.get("diagnostics"))
+    detail["rao"] = {
+        "summary": rao.summary(),
+        "history": history,
+        "finite_difference": {k: v for k, v in fd.items() if k != "details"},
+        "note_ko": ("Rao 참조 모델은 전도도 LIF 회로와 다른 엔진이다. "
+                    "동일 아키텍처 대조군인 것처럼 섞어 순위를 매기지 않는다."),
+    }
+    try:
+        detail["rao"]["figure"] = str(plot_rao(state, I, rao, out / "rao.png"))
+    except Exception as exc:  # 그림 실패가 수치 결과를 버리게 하지 않는다
+        detail["rao"]["figure_error"] = f"{type(exc).__name__}: {exc}"
+
+    # --- (2) 고정 Gabor 대조 경로 -------------------------------------
+    progress("고정 Gabor 대조 경로 측정")
+    ref = FixedGaborReference(model.anat.grid, cfg)
+    g = model.anat.grid
+    order = np.argsort(g.ecc_deg)
+    centers = np.stack([g.x_deg[order], g.y_deg[order]], axis=1)[::max(1, len(order) // 8)][:8]
+    size = int(cfg["retina"]["image"]["max_side_px"])
+    cx = cy = (size - 1) / 2.0
+    n_ori = int(cfg["v1"]["n_orientations"])
+    ori_imgs = [grating_patch(size, size, cx, cy, 0.3 * size,
+                                          np.pi * i / n_ori, 0.0, 0.06)
+                for i in range(n_ori)]
+    lum = 0  # 0번 채널 = luminance_ON
+    energies = []
+    for img in ori_imgs:
+        r = ref.responses(sampled(img)[lum], centers)
+        energies.append(r["energy"])
+    energy = np.stack(energies, axis=2).max(axis=2)  # (n_c, n_ori)
+    tuning = orientation_tuning(
+        np.stack([e[:, 0] for e in energies], axis=1), ref.orientations_rad)
+    phases = [grating_patch(size, size, cx, cy, 0.3 * size, 0.0,
+                                        2 * np.pi * i / 8, 0.06) for i in range(8)]
+    sweep = phase_sweep_response(ref, [sampled(p)[lum] for p in phases], centers)
+    rev = contrast_reversal_response(ref, sampled(ori_imgs[0])[lum],
+                                     sampled(phases[4])[lum], centers)
+    detail["fixed_gabor_reference"] = {
+        "enabled_in_config": bool(cfg["v1"]["fixed_gabor_reference"]["enabled"]),
+        "n_centers": int(centers.shape[0]),
+        "orientation_tuning": tuning,
+        "phase_sweep": sweep,
+        "contrast_reversal": rev,
+        "learned": False,
+        "note_ko": ("고정 Gabor 는 사람이 계수를 정한 특징 추출기다. 이 경로의 방향 "
+                    "선택성을 '학습되었다'고 보고하지 않는다. 피질 회로 경로의 결과와 "
+                    "섞어 쓰지 않는다."),
+    }
+
+    # --- (3) 저장된 기록에서 뉴런 조회 --------------------------------
+    if sim_dir is not None and Path(sim_dir).is_dir():
+        progress("explain-neuron (저장된 기록 조회)")
+        ev = read_events(Path(sim_dir))
+        nid = None
+        if ev:
+            spike = ev["event_type"] == EVENT_TYPE_INDEX["spike"]
+            if spike.any():
+                ids, counts = np.unique(ev["src_id"][spike], return_counts=True)
+                nid = int(ids[int(np.argmax(counts))])
+        if nid is None:
+            detail["explain_neuron"] = {
+                "found": False,
+                "reason_ko": "저장된 기록에 발화 사건이 없어 조회할 뉴런을 고르지 못했다.",
+            }
+        else:
+            info = explain_neuron(Path(sim_dir), nid, 0.0, float("inf"), top_k=20)
+            detail["explain_neuron"] = info
+            (out / "explain_neuron.json").write_text(
+                json.dumps(info, ensure_ascii=False, indent=1, default=str),
+                encoding="utf-8")
+
+    # --- (4) 소거 재실행 비교 ------------------------------------------
+    progress("소거(ablation) 재실행 비교")
+    n_steps = max(4, int(round(cfg["engine"]["duration_ms"]
+                               / cfg["engine"]["dt_ms"] / 4)))
+    ids, values = model.anat.retina_neuron_id, sampled(stims[0].frames[0])
+    mask = ids >= 0
+    rates = model.driver.rates_hz(values)
+    drive = rates_to_drive(cfg, ids[mask].ravel(), rates[mask].ravel(), n_steps,
+                           rngs.get("input_noise"))
+    trainable = np.nonzero(model.table.active)[0]
+    pick = trainable[: min(32, trainable.size)]
+    if pick.size:
+        abl = ablation_rerun(cfg, lambda: build_model(cfg, rng_from_config(cfg)),
+                             pick, n_steps, drive, rngs)
+        detail["ablation"] = abl
+    else:
+        detail["ablation"] = {"skipped": True, "reason_ko": "제거할 연결이 없다"}
+
+    (out / "reference.json").write_text(
+        json.dumps(detail, ensure_ascii=False, indent=1, default=str),
+        encoding="utf-8")
+    return detail
+
+
+def stage_report(run_dirs: Sequence[Path]) -> dict[str, Any]:
+    made: list[str] = []
+    errors: dict[str, str] = {}
+    for d in run_dirs:
+        try:
+            made.append(str(make_report(Path(d))))
+        except Exception as exc:
+            errors[str(d)] = f"{type(exc).__name__}: {exc}"
+    return {"reports": made, "errors": errors}
+
+
+def stage_figures(cfg: dict[str, Any], run_dirs: Sequence[Path],
+                  progress: Callable[[str], None]) -> dict[str, Any]:
+    made: list[str] = []
+    errors: dict[str, str] = {}
+    model = None
+    try:
+        model = build_model(cfg, rng_from_config(cfg))
+    except Exception as exc:
+        errors["build_model"] = f"{type(exc).__name__}: {exc}"
+    for d in run_dirs:
+        d = Path(d)
+        nids: list[int] = []
+        try:
+            ev = read_events(d)
+            if ev:
+                spike = ev["event_type"] == EVENT_TYPE_INDEX["spike"]
+                if spike.any():
+                    ids, counts = np.unique(ev["src_id"][spike], return_counts=True)
+                    nids = [int(x) for x in ids[np.argsort(-counts)][:3]]
+        except Exception as exc:
+            errors[f"{d}/events"] = f"{type(exc).__name__}: {exc}"
+        progress(f"그림 생성: {d.name}")
+        made += [str(p) for p in make_all(d, model, nids)]
+    return {"figures": made, "n_figures": len(made), "errors": errors}
+
+
+# ----------------------------------------------------------------------
+def run_everything(out_dir: str | Path, configs: Sequence[str], *,
+                   package_root: Path, command: str,
+                   backend: str = "auto", stages: Sequence[str] | None = None,
+                   limit_stimuli: int = 0, duration_ms: float | None = None,
+                   seed: int | None = None, dry_run: bool = False,
+                   overwrite: bool = False, stop_on_fail: bool = False,
+                   config_loader: Callable[[str], dict[str, Any]] | None = None,
+                   progress: Callable[[str], None] | None = None) -> dict[str, Any]:
+    """전체 과정을 자동 실행하고 ``out_dir`` 아래에 결과를 쓴다.
+
+    Parameters
+    ----------
+    out_dir : 결과를 쓸 폴더 (없으면 만든다)
+    configs : 설정 이름 또는 JSON 경로 목록
+    package_root : 코드 해시 대상 (패키지 폴더 또는 단일 파일)
+    command : manifest 에 남길 실행 명령 문자열
+    backend : ``auto`` | ``hdf5`` | ``npz``
+    stages : 실행할 단계 목록 (기본 :data:`ALL_STAGES`)
+    dry_run : True 면 계획과 규모만 계산하고 아무 것도 실행하지 않는다
+
+    Returns
+    -------
+    dict : 전체 요약 (``summary.json`` 과 같은 내용)
+    """
+    out_root = Path(out_dir).expanduser().resolve()
+    out_root.mkdir(parents=True, exist_ok=True)
+    stage_list = list(stages) if stages else list(ALL_STAGES)
+    unknown = [s for s in stage_list if s not in ALL_STAGES]
+    if unknown:
+        raise ValueError(f"알 수 없는 단계: {unknown} (가능: {list(ALL_STAGES)})")
+
+    log_path = out_root / "run_all.log"
+    log_fh = open(log_path, "a", encoding="utf-8")
+
+    def emit(msg: str) -> None:
+        line = f"[{time.strftime('%H:%M:%S')}] {msg}"
+        print(line, flush=True)
+        log_fh.write(line + "\n")
+        log_fh.flush()
+        if progress is not None:
+            progress(msg)
+
+    started = time.time()
+    emit(f"출력 폴더: {out_root}")
+    emit(f"설정: {list(configs)} / 단계: {stage_list}"
+         + (" / dry-run (아무 것도 실행하지 않는다)" if dry_run else ""))
+
+    summary: dict[str, Any] = {
+        "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "command": command, "output_dir": str(out_root),
+        "configs": list(configs), "stages": stage_list, "dry_run": bool(dry_run),
+        "backend_choice": backend, "library_versions": library_versions(),
+        "results": {},
+    }
+
+    overall_ok = True
+    for name in configs:
+        emit("=" * 70)
+        emit(f"설정 '{name}' 시작")
+        cfg_dir = out_root / Path(name).stem
+        cfg_dir.mkdir(parents=True, exist_ok=True)
+        entry: dict[str, Any] = {"config": name, "stages": [], "notes": []}
+        summary["results"][Path(name).stem] = entry
+        try:
+            cfg, notes = prepare_config(name, backend=backend,
+                                        max_stimuli=limit_stimuli,
+                                        duration_ms=duration_ms, seed=seed,
+                                        loader=config_loader)
+        except Exception as exc:
+            emit(f"  [실패] 설정을 읽지 못했다: {exc}")
+            entry["config_error"] = f"{type(exc).__name__}: {exc}"
+            overall_ok = False
+            continue
+        entry["notes"] = notes
+        entry["config_sha256"] = config_hash(cfg)
+        for n in notes:
+            emit(f"  [알림] {n}")
+
+        run_dirs: list[Path] = []
+        sim_dir: Path | None = None
+        validate_failed = False
+
+        for stage in stage_list:
+            res = StageResult(name=stage)
+            t0 = time.time()
+            # 번호는 고른 단계 순서가 아니라 ALL_STAGES 안의 고정 위치를 쓴다.
+            # 일부 단계만 돌려도 폴더 이름이 전체 실행과 같아야 비교할 수 있다.
+            target = cfg_dir / f"{ALL_STAGES.index(stage) + 1:02d}_{stage}"
+            try:
+                if dry_run:
+                    if stage == "config_check":
+                        res.detail = stage_config_check(cfg, target, package_root,
+                                                        command)
+                        res.output_dir = str(target)
+                    else:
+                        res.detail = {"note_ko": "dry-run 이라 실행하지 않았다."}
+                    res.status = "dry_run"
+                elif stage in ("simulate", "experiment") and validate_failed:
+                    res.status = "skipped"
+                    res.error = ("validate 가 실패했고 "
+                                 "validation.stop_experiment_on_failure 가 참이라 "
+                                 "의존 실험을 중지했다.")
+                    emit(f"  [{stage}] 건너뜀 — {res.error}")
+                else:
+                    emit(f"  [{stage}] {STAGE_TITLES_KO[stage]} 시작")
+                    if stage in ("config_check", "validate", "simulate",
+                                 "experiment", "reference"):
+                        moved = _prepare_dir(target, overwrite,
+                                             _DONE_MARKERS.get(stage, ()))
+                        if moved:
+                            emit(f"    기존 결과를 옮겨 두었다: {moved}")
+                        res.output_dir = str(target)
+                    if stage == "config_check":
+                        res.detail = stage_config_check(cfg, target, package_root,
+                                                        command)
+                    elif stage == "validate":
+                        res.detail = stage_validate(cfg, target, package_root,
+                                                    command, emit)
+                        run_dirs.append(target)
+                        if res.detail.get("n_failed"):
+                            validate_failed = bool(
+                                cfg["validation"]["stop_experiment_on_failure"])
+                            res.status = "failed"
+                            res.error = f"{res.detail['n_failed']}건 실패"
+                    elif stage == "simulate":
+                        res.detail = stage_simulate(cfg, target, package_root,
+                                                    command, emit)
+                        run_dirs.append(target)
+                        sim_dir = target
+                    elif stage == "experiment":
+                        res.detail = stage_experiment(cfg, target, package_root,
+                                                      command, emit)
+                        run_dirs.append(target)
+                    elif stage == "reference":
+                        res.detail = stage_reference(cfg, target, sim_dir, emit)
+                    elif stage == "report":
+                        res.detail = stage_report(run_dirs)
+                        res.output_dir = str(cfg_dir)
+                    elif stage == "figures":
+                        res.detail = stage_figures(cfg, run_dirs, emit)
+                        res.output_dir = str(cfg_dir)
+                    if res.status == "pending":
+                        res.status = "completed"
+            except Exception as exc:
+                res.status = "failed"
+                res.error = f"{type(exc).__name__}: {exc}"
+                res.detail["traceback"] = traceback.format_exc()
+                emit(f"  [{stage}] 실패: {res.error}")
+            res.elapsed_sec = time.time() - t0
+            entry["stages"].append(res.to_dict())
+            if res.status == "failed":
+                overall_ok = False
+                if stop_on_fail:
+                    emit("  --stop-on-fail 이라 여기서 중단한다.")
+                    break
+            elif res.status in ("completed", "dry_run"):
+                emit(f"  [{stage}] {res.status} ({res.elapsed_sec:.1f}s)")
+        entry["run_dirs"] = [str(d) for d in run_dirs]
+
+    summary["finished_utc"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    summary["elapsed_sec"] = round(time.time() - started, 3)
+    summary["all_stages_ok"] = overall_ok
+    summary["experiment_status"] = "not_run" if dry_run else (
+        "completed" if overall_ok else "failed")
+    (out_root / "summary.json").write_text(
+        json.dumps(summary, ensure_ascii=False, indent=1, default=str),
+        encoding="utf-8")
+    md = write_summary_markdown(out_root, summary)
+    emit("=" * 70)
+    emit(f"끝. 요약: {out_root / 'summary.json'}")
+    emit(f"      한국어 요약: {md}")
+    emit(f"      로그: {log_path}")
+    log_fh.close()
+    return summary
+
+
+def write_summary_markdown(out_root: Path, summary: dict[str, Any]) -> Path:
+    """``SUMMARY_ko.md`` 를 요약 dict 에서만 만든다 (손으로 넣은 수치 없음)."""
+    L: list[str] = []
+    A = L.append
+    A("# 자동 실행 요약")
+    A("")
+    A(f"- 출력 폴더: `{summary['output_dir']}`")
+    A(f"- 실행 명령: `{summary['command']}`")
+    A(f"- 시작(UTC): {summary['started_utc']} / 종료(UTC): {summary.get('finished_utc')}")
+    A(f"- 소요(초): {summary.get('elapsed_sec')}")
+    A(f"- dry-run: {summary['dry_run']}")
+    A(f"- 전체 상태: **{summary.get('experiment_status')}**")
+    A("")
+    A("> 이 문서는 `summary.json` 에서만 생성되었다. 손으로 넣은 성능 숫자는 없다.")
+    A("")
+    for cfg_name, entry in summary["results"].items():
+        A(f"## 설정 `{cfg_name}`")
+        A("")
+        if entry.get("config_error"):
+            A(f"- 설정 오류: {entry['config_error']}")
+            A("")
+            continue
+        A(f"- 설정 해시: `{entry.get('config_sha256', '')[:32]}…`")
+        for n in entry.get("notes", []):
+            A(f"- 알림: {n}")
+        A("")
+        A("| 단계 | 내용 | 상태 | 소요(초) | 출력 |")
+        A("|---|---|---|---|---|")
+        for st in entry["stages"]:
+            out = st.get("output_dir") or ""
+            if out:
+                out = f"`{Path(out).name}`"
+            A(f"| {st['stage']} | {st['title_ko']} | **{st['status']}** | "
+              f"{st['elapsed_sec']} | {out} |")
+        A("")
+        for st in entry["stages"]:
+            d = st.get("detail") or {}
+            if st["stage"] == "config_check" and d.get("estimate"):
+                e = d["estimate"]
+                A(f"- 규모 추정: 뉴런 {e['n_neurons']}, 시냅스 {e['n_synapses_estimated']}, "
+                  f"스텝 {e['n_steps']}, 이벤트 {e['events_estimated']} "
+                  f"(런타임은 측정 전에 확정하지 않는다)")
+            if st["stage"] == "validate" and "n_passed" in d:
+                A(f"- 필수 검증: 통과 {d['n_passed']} / 실패 {d['n_failed']} / "
+                  f"건너뜀 {d['n_skipped']} (skipped 는 passed 에 포함하지 않는다)")
+            if st["stage"] == "simulate" and d.get("n_samples") is not None:
+                A(f"- 시뮬레이션: 표본 {d.get('n_samples')}개, "
+                  f"이벤트 {d.get('n_events')}건")
+            if st["stage"] == "experiment" and d.get("splits"):
+                A(f"- 분할: {d['splits']}")
+            if st["stage"] in ("simulate", "experiment") and d.get("silent_areas"):
+                A(f"- **경고**: {st['stage']} 단계에서 영역 "
+                  f"{', '.join(d['silent_areas'])} 이(가) 모든 표본에서 한 번도 "
+                  f"발화하지 않았다. 이 영역의 0 은 모형의 결론이 아니라 전달이 "
+                  f"끊겼다는 표시다. 해당 실행 폴더의 `manifest.json` 에서 "
+                  f"`transmission_headroom` 의 `blocked_rules` 를 보라.")
+            if st["stage"] == "reference":
+                rao = (d.get("rao") or {}).get("finite_difference")
+                if rao:
+                    A(f"- Rao 유한차분 상대 잔차: {rao.get('max_relative_residual')}")
+                fg = (d.get("fixed_gabor_reference") or {}).get("orientation_tuning")
+                if fg:
+                    A(f"- 고정 Gabor 대조 경로 OSI 평균: {fg.get('osi_mean')} "
+                      f"(학습된 선택성이 아니다)")
+                abl = d.get("ablation") or {}
+                if "n_neurons_changed" in abl:
+                    A(f"- 소거 재실행: 연결 {abl['n_ablated_synapses']}개 제거 시 "
+                      f"발화가 바뀐 뉴런 {abl['n_neurons_changed']}개")
+            if st["stage"] == "figures" and d.get("n_figures") is not None:
+                A(f"- 그림 {d['n_figures']}개")
+            if st.get("error"):
+                A(f"- 오류: {st['error']}")
+        A("")
+    A("## 해석 시 주의")
+    A("")
+    A("- 이 실행의 수치는 **모형 파라미터로 만든 모형의 출력**이다. 생물학적 측정값이 아니다.")
+    A("- 고정 Gabor 대조 경로의 선택성은 학습된 것이 아니다.")
+    A("- Rao 참조 모델은 전도도 LIF 회로와 다른 엔진이므로 섞어 순위를 매기지 않는다.")
+    A("- 정지영상만 쓴 실행의 운동 지표는 `not_applicable` 이다.")
+    A("- 자세한 가정은 BIOLOGY_AND_ASSUMPTIONS.md 를 보라.")
+    path = out_root / "SUMMARY_ko.md"
+    path.write_text("\n".join(L) + "\n", encoding="utf-8")
+    return path
+
+
+# ============================================================================
 # 섹션: cli  —  명령행 인터페이스
 #   (원래 파일: cortex/cli.py)
 # ============================================================================
@@ -8724,6 +9732,12 @@ def run_all(cfg: dict[str, Any], recorder: Any, package_root: Path,
     python -m cortex.cli report         --run-dir runs/RUN_ID
     python -m cortex.cli explain-neuron --run-dir runs/RUN_ID --neuron-id 12                                         --from-ms 0 --to-ms 100
     python -m cortex.cli figures        --run-dir runs/RUN_ID
+    python -m cortex.cli run-all        --config v1_small --out D:/결과폴더
+
+``run-all`` 은 **지정한 폴더에 전체 과정을 자동으로 실행**한다. 사용자가 출력
+폴더를 명시해 직접 부르는 명령이므로 이 하나만 기본으로 실행되고, 계획만 보려면
+``--dry-run`` 을 준다. 나머지 수치 실험 명령은 여전히 ``--execute`` 가 있어야
+실행된다.
 """
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -8751,6 +9765,38 @@ def _load_cfg(path: str) -> dict[str, Any]:
 
 def _progress(msg: str) -> None:
     print(f"  … {msg}", flush=True)
+
+
+def _config_loader(spec: str) -> dict[str, Any]:
+    """설정 이름/경로 -> 해석된 설정.
+
+    단일 파일 판에서는 내장 설정 이름도 받는다 (그때는 전역에
+    ``load_config_by_name_or_path`` 가 있다). 패키지 판에서는 JSON 경로다.
+    """
+    fn = globals().get("load_config_by_name_or_path") or globals().get("load_config")
+    if fn is not None:
+        return fn(spec)
+    return load(spec)
+
+
+def _expand_config_list(spec: str) -> list[str]:
+    """쉼표로 구분한 설정 목록을 펼친다. ``all`` 은 쓸 수 있는 설정 전부."""
+    out: list[str] = []
+    for item in str(spec).split(","):
+        item = item.strip()
+        if not item:
+            continue
+        if item.lower() != "all":
+            out.append(item)
+            continue
+        builtin = globals().get("BUILTIN_CONFIGS")
+        if builtin:
+            out += sorted(builtin)
+        else:
+            cfg_dir = PROJECT_ROOT / "configs"
+            out += [str(q) for q in sorted(cfg_dir.glob("*.json"))
+                    if not q.name.startswith("_")]
+    return out
 
 
 def _runner(cfg: dict[str, Any], run_dir: Path | None, command: str,
@@ -8889,6 +9935,40 @@ def cmd_figures(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_run_all(args: argparse.Namespace) -> int:
+    """전체 과정을 자동 실행하고 지정한 폴더에 결과를 쓴다."""
+
+    configs = _expand_config_list(args.config)
+    if not configs:
+        print("[오류] --config 에 설정 이름이나 경로를 하나 이상 주어야 한다.",
+              file=sys.stderr)
+        return 2
+    stages = [x.strip() for x in args.stages.split(",") if x.strip()] \
+        if args.stages else list(ALL_STAGES)
+    out = Path(args.out).expanduser()
+    print("=" * 70)
+    print(f"전체 자동 실행{' (dry-run)' if args.dry_run else ''}")
+    print(f"  출력 폴더 : {out.resolve()}")
+    print(f"  설정      : {configs}")
+    print(f"  단계      : {stages}")
+    print("  중단하려면 Ctrl+C. 중단해도 그때까지의 기록은 남는다.")
+    print("=" * 70)
+    try:
+        summary = run_everything(
+            out, configs, package_root=PACKAGE_ROOT, command=" ".join(sys.argv),
+            backend=args.backend, stages=stages, limit_stimuli=args.limit_stimuli,
+            duration_ms=args.duration_ms, seed=args.seed, dry_run=args.dry_run,
+            overwrite=args.overwrite, stop_on_fail=args.stop_on_fail,
+            config_loader=_config_loader, progress=None)
+    except FileExistsError as exc:
+        print(f"[오류] {exc}", file=sys.stderr)
+        return 2
+    print(f"\n전체 상태: {summary['experiment_status']}")
+    print(f"요약: {Path(summary['output_dir']) / 'summary.json'}")
+    print(f"한국어 요약: {Path(summary['output_dir']) / 'SUMMARY_ko.md'}")
+    return 0 if summary["all_stages_ok"] else 1
+
+
 def cmd_list_runs(args: argparse.Namespace) -> int:
     root = Path(args.runs_root) if args.runs_root else DEFAULT_RUNS
     if not root.is_dir():
@@ -8967,6 +10047,33 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--rebuild-model", action="store_true",
                     help="manifest 의 설정으로 모델을 다시 조립해 배치/지도 그림도 만든다")
     sp.set_defaults(func=cmd_figures)
+
+    sp = sub.add_parser(
+        "run-all",
+        help="전체 과정을 자동 실행하고 지정한 폴더에 결과를 쓴다 (기본으로 실행됨)")
+    sp.add_argument("--out", required=True,
+                    help="결과를 쓸 폴더 (없으면 만든다). 공백/한글 경로 가능")
+    sp.add_argument("--config", default="minimal",
+                    help="설정 이름/경로. 쉼표로 여러 개, 'all' 이면 전부 "
+                         "(기본: minimal)")
+    sp.add_argument("--stages", default="",
+                    help="실행할 단계 (쉼표 구분). 기본은 전부: "
+                         "config_check,validate,simulate,experiment,reference,"
+                         "report,figures")
+    sp.add_argument("--backend", default="auto", choices=["auto", "hdf5", "npz"],
+                    help="기록 백엔드. auto 는 h5py 가 없으면 npz 로 바꾸고 알린다")
+    sp.add_argument("--limit-stimuli", type=int, default=0,
+                    help="자극 수를 앞에서부터 N개로 제한 (0 이면 제한 없음)")
+    sp.add_argument("--duration-ms", type=float, default=None,
+                    help="engine.duration_ms 덮어쓰기")
+    sp.add_argument("--seed", type=int, default=None, help="seeds.master 덮어쓰기")
+    sp.add_argument("--overwrite", action="store_true",
+                    help="이미 완료된 결과 폴더를 옆으로 옮기고 새로 쓴다")
+    sp.add_argument("--stop-on-fail", action="store_true",
+                    help="한 단계라도 실패하면 즉시 중단")
+    sp.add_argument("--dry-run", action="store_true",
+                    help="계획과 규모만 계산하고 실행하지 않는다")
+    sp.set_defaults(func=cmd_run_all)
 
     sp = sub.add_parser("list-runs", help="실행 기록 목록")
     sp.add_argument("--runs-root", default=None)
@@ -9070,7 +10177,8 @@ _FB_NOTE = ("하향은 L4 밖(주로 L1/apical, L5)을 표적으로 한다. 같�
 
 
 def _rule(name, src_area, src_layers, dst_area, dst_layers, *, comp="basal",
-          receptor="AMPA", kind="rf_knn", k=8, radius=0.4, sigma=0.5, prob=0.5,
+          receptor="AMPA", kind="rf_knn", k=8, radius=0.4, radius_space=None,
+          sigma=0.5, prob=0.5,
           median=1.0, wsigma=0.3, wmax=6.0, vel=0.3, delay=0.8,
           src_types=None, dst_types=None, plastic="none", gabor=False,
           enabled=None, note="") -> dict[str, Any]:
@@ -9084,7 +10192,12 @@ def _rule(name, src_area, src_layers, dst_area, dst_layers, *, comp="basal",
         "dst": {"area": dst_area, "layer": list(dst_layers),
                 "cell_type": list(dst_types or [])},
         "target_compartment": comp, "receptor": receptor, "rule": kind,
-        "k": k, "radius_mm": radius, "rf_match_sigma_deg": sigma,
+        "k": k, "radius_mm": radius,
+    })
+    if radius_space is not None:
+        r["radius_space"] = radius_space
+    r.update({
+        "rf_match_sigma_deg": sigma,
         "probability": prob,
         "weight": {"dist": "lognormal", "median": median, "sigma": wsigma,
                    "min": 0.0, "max": wmax},
@@ -9122,7 +10235,8 @@ def _local_microcircuit(area: str, scale: float = 1.0,
     e = enabled
     return [
         _rule(f"{area}_L4->L2L3", area, ["L4"], area, ["L2", "L3"],
-              kind="local_radius", radius=0.45, k=8, prob=0.5,
+              kind="local_radius", radius=0.45, radius_space="surface",
+              k=8, prob=0.5,
               median=1.1 * scale, vel=0.2, delay=0.8,
               src_types=["spiny_stellate"], dst_types=["pyramidal"],
               plastic="stdp", enabled=e, note="L4 -> L2/3 상행"),
@@ -9159,26 +10273,31 @@ def _local_microcircuit(area: str, scale: float = 1.0,
               delay=0.8, src_types=["sst_martinotti"], dst_types=["pyramidal"],
               enabled=e, note="SST 는 첨단수상돌기(apical) 표적 억제"),
         _rule(f"{area}_L2L3->L5", area, ["L2", "L3"], area, ["L5"],
-              kind="local_radius", radius=0.6, k=5, prob=0.45,
+              kind="local_radius", radius=0.6, radius_space="surface",
+              k=5, prob=0.45,
               median=0.9 * scale, vel=0.2, delay=0.9, enabled=e,
               src_types=["pyramidal"], dst_types=["pyramidal"]),
         _rule(f"{area}_L5->L6", area, ["L5"], area, ["L6"],
-              kind="local_radius", radius=0.6, k=4, prob=0.45,
+              kind="local_radius", radius=0.6, radius_space="surface",
+              k=4, prob=0.45,
               median=0.8 * scale, vel=0.2, delay=0.9, enabled=e,
               src_types=["pyramidal"], dst_types=["pyramidal"]),
         _rule(f"{area}_L6->L4", area, ["L6"], area, ["L4"],
-              kind="local_radius", radius=0.6, k=4, prob=0.35,
+              kind="local_radius", radius=0.6, radius_space="surface",
+              k=4, prob=0.35,
               median=0.5 * scale, vel=0.2, delay=1.1, enabled=e,
               src_types=["pyramidal"], dst_types=["spiny_stellate"],
               note="층내 피드백 (L6 -> L4)"),
         _rule(f"{area}_L5->L1_inh", area, ["L5"], area, ["L1"],
-              comp="soma", kind="local_radius", radius=0.9, k=3, prob=0.45,
+              comp="soma", kind="local_radius", radius=0.9,
+              radius_space="surface", k=3, prob=0.45,
               median=0.7 * scale, vel=0.2, delay=1.0, enabled=e,
               src_types=["pyramidal"], dst_types=["l1_inhibitory"],
               note="L1 은 세포체 밀도가 낮지만 비어 있지 않다"),
         _rule(f"{area}_L1_inh->apical", area, ["L1"], area, ["L2", "L3", "L5"],
               comp="apical", receptor="GABA_A", kind="local_radius",
-              radius=0.9, k=6, prob=0.5, median=0.9 * scale, vel=0.15,
+              radius=0.9, radius_space="surface", k=6, prob=0.5,
+              median=0.9 * scale, vel=0.15,
               delay=0.8, src_types=["l1_inhibitory"], dst_types=["pyramidal"],
               enabled=e, note="L1 억제 -> 피라미드 apical 구획"),
     ]
@@ -9236,6 +10355,7 @@ def _config_minimal() -> dict[str, Any]:
         "notes": [
             "뉴런 수·층 두께·연결 확률은 모형 파라미터다. 출처가 있는 측정값이 아니다.",
             "sum_threshold 는 무차원 합산 모델이며 생물학적 막전위 모델이 아니다.",
+            "sum_threshold 는 무차원 합산이다. 최대 입력의 한 구간 기여 (max_rate_hz * dt_ms/1000 * sum_mode_scale)가 망막 세포의 sum_threshold_theta 를 넘어야 회로가 침묵하지 않는다. sum_mode_scale=40 이면 최대 입력에서 2.0 (임계 0.35)이고 균일 배경에서는 여전히 0 이다.",
         ],
     },
     "seeds": {"master": 20240101},
@@ -9350,7 +10470,7 @@ def _config_minimal() -> dict[str, Any]:
             "gain": 1.0,
             "baseline_rate_hz": 0.0,
             "current_per_hz_pA": 2.0,
-            "sum_mode_scale": 1.0,
+            "sum_mode_scale": 40.0,
         },
     },
     "retinotopy": {
@@ -9489,6 +10609,7 @@ def _config_minimal() -> dict[str, Any]:
                 "receptor": "AMPA",
                 "rule": "local_radius",
                 "radius_mm": 0.5,
+                "radius_space": "surface",
                 "k": 8,
                 "probability": 0.6,
                 "weight": {"dist": "lognormal", "median": 0.45, "sigma": 0.3, "min": 0.0, "max": 3.0},
@@ -9520,6 +10641,7 @@ def _config_minimal() -> dict[str, Any]:
                 "receptor": "AMPA",
                 "rule": "local_radius",
                 "radius_mm": 0.6,
+                "radius_space": "surface",
                 "k": 4,
                 "probability": 0.5,
                 "weight": {"dist": "lognormal", "median": 0.35, "sigma": 0.3, "min": 0.0, "max": 3.0},
@@ -9534,6 +10656,7 @@ def _config_minimal() -> dict[str, Any]:
                 "receptor": "AMPA",
                 "rule": "local_radius",
                 "radius_mm": 0.6,
+                "radius_space": "surface",
                 "k": 4,
                 "probability": 0.5,
                 "weight": {"dist": "lognormal", "median": 0.3, "sigma": 0.3, "min": 0.0, "max": 3.0},
@@ -9563,6 +10686,7 @@ def _config_minimal() -> dict[str, Any]:
                 "receptor": "AMPA",
                 "rule": "local_radius",
                 "radius_mm": 0.8,
+                "radius_space": "surface",
                 "k": 3,
                 "probability": 0.5,
                 "weight": {"dist": "lognormal", "median": 0.25, "sigma": 0.3, "min": 0.0, "max": 2.0},
@@ -9578,6 +10702,7 @@ def _config_minimal() -> dict[str, Any]:
                 "receptor": "GABA_A",
                 "rule": "local_radius",
                 "radius_mm": 0.8,
+                "radius_space": "surface",
                 "k": 5,
                 "probability": 0.5,
                 "weight": {"dist": "lognormal", "median": 0.3, "sigma": 0.3, "min": 0.0, "max": 2.0},
@@ -10087,6 +11212,7 @@ MENU = """
   3x3 뉴런 기록 구조 시각피질 시뮬레이터 (단일 파일 판)
   (망막 - LGN - V1 - V2 - V3 - V4 - IT, 연구용)
 ==================================================================
+  A) 전체 자동 실행 — 내가 지정한 폴더에 모든 결과를 쓴다
   1) 최소 모델 검증 실행           (내장 설정 minimal)
   2) V1 시뮬레이션 실행             (내장 설정 v1_small)
   3) 전체 시각 경로 작은 모델 실험  (내장 설정 hierarchy_small)
@@ -10097,6 +11223,9 @@ MENU = """
   8) 실행 기록 목록 보기
   9) 내장 설정 자체 점검 (configs/*.json 이 있으면 비교)
   0) 종료
+------------------------------------------------------------------
+  A) 를 고르면 설정 확인 -> 검증 -> 시뮬레이션 -> 실험 -> 참조 모델
+  -> 보고서 -> 그림 까지 한 번에 돌리고 결과를 지정 폴더에 정리한다.
 ==================================================================
 """
 
@@ -10220,6 +11349,35 @@ def _menu_resume() -> None:
     cli_main(["resume", "--run-dir", run_dir, "--execute"])
 
 
+def _menu_run_all() -> None:
+    """전체 과정을 자동 실행하고 사용자가 지정한 폴더에 결과를 쓴다."""
+    out = _ask("결과를 쓸 폴더 (예: D:/결과폴더, 공백/한글 가능)", "")
+    if not out:
+        print("  결과 폴더를 반드시 입력해야 한다. 아무 것도 실행하지 않았다.")
+        return
+    spec = _ask("설정 (내장 이름/경로, 쉼표로 여러 개, 'all' 이면 내장 전부)",
+                "minimal")
+    stages = _ask("실행할 단계 (쉼표 구분, 비우면 전부)", "")
+    limit = _ask("자극 수 제한 (0 이면 제한 없음)", "0")
+    dry = _ask("계획만 보고 실행은 하지 않을까? (y/N)", "N").lower() == "y"
+    try:
+        limit_n = int(limit)
+    except ValueError:
+        print("  자극 수 제한은 정수여야 한다.")
+        return
+    argv = ["run-all", "--out", out, "--config", spec,
+            "--limit-stimuli", str(limit_n)]
+    if stages:
+        argv += ["--stages", stages]
+    if dry:
+        argv += ["--dry-run"]
+    print("\n[전체 자동 실행] 을(를) 시작한다.")
+    print("  중단하려면 Ctrl+C 를 누르면 된다. 중단해도 그때까지의 기록은 남는다.")
+    code = cli_main(argv)
+    print(f"\n[완료] 종료 코드 {code}. 결과는 {out} 아래에 있다.")
+    print(f"  요약: {Path(out) / 'SUMMARY_ko.md'}")
+
+
 def _menu_inspect() -> None:
     cfg = _resolve_config_choice(_ask("설정 (내장 이름 또는 파일 경로)", "v1_small"))
     if cfg is None:
@@ -10242,7 +11400,9 @@ def menu_main() -> int:
             if choice == "0":
                 print("종료한다. (다른 실험을 자동으로 실행하지 않는다.)")
                 return 0
-            if choice in PRESETS:
+            if choice in ("a", "A"):
+                _menu_run_all()
+            elif choice in PRESETS:
                 _run_preset(choice)
             elif choice == "4":
                 _menu_report()
@@ -10257,7 +11417,8 @@ def menu_main() -> int:
             elif choice == "9":
                 selftest()
             else:
-                print(f"  '{choice}' 은(는) 없는 번호다. 0~9 중에서 고르라.")
+                print(f"  '{choice}' 은(는) 없는 번호다. "
+                      f"A 또는 0~9 중에서 고르라.")
         except KeyboardInterrupt:
             print("\n[중단] 작업을 중단했다. 기록은 runs/ 아래에 남아 있고 "
                   "메뉴 6) 으로 재개할 수 있다.")
@@ -10307,12 +11468,14 @@ def selftest() -> int:
                     print(f"      다른 항목: {key}")
             n_diff += 1
     print(f"\n일치 {n_ok} / 다름 {n_diff} / 건너뜀 {n_skip}")
-    print("이 점검은 설정 스키마만 본다. 수치 실험 상태는 여전히 not_run 이다.")
+    print("이 점검은 설정 스키마만 본다. 시뮬레이션·학습은 실행하지 않았다.")
+    print("과학적 수치 실험을 돌리려면 run-all 또는 --execute 명령을 쓰라.")
     return 0 if n_diff == 0 else 1
 
 
 _CLI_COMMANDS = {"inspect-config", "validate", "simulate", "experiment",
-                 "resume", "report", "explain-neuron", "figures", "list-runs"}
+                 "resume", "report", "explain-neuron", "figures", "list-runs",
+                 "run-all"}
 
 
 def entry(argv: list[str] | None = None) -> int:
@@ -10321,6 +11484,7 @@ def entry(argv: list[str] | None = None) -> int:
         python cortex_all_in_one.py                       -> 메뉴
         python cortex_all_in_one.py selftest              -> 내장 설정 점검
         python cortex_all_in_one.py validate --config minimal --execute
+        python cortex_all_in_one.py run-all --config minimal --out D:/결과폴더
     """
     args = list(sys.argv[1:] if argv is None else argv)
     if not args:

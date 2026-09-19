@@ -262,26 +262,62 @@ class RetinaEncoder:
 
     # ------------------------------------------------------------------
     def fit_normalization(self, images: Sequence[np.ndarray], percentile: float = 99.0,
-                          source: str = "train") -> dict[str, Any]:
+                          source: str = "train", sampler: Any = None,
+                          min_scale_ratio: float = 1e-3) -> dict[str, Any]:
         """채널별 스케일을 **훈련 영상으로만** 추정한다 (부작용: self.scale 설정).
 
         dev/test 영상으로 다시 추정하지 않는다. 추정에 쓴 분할 이름을 기록한다.
+
+        Parameters
+        ----------
+        sampler : SamplingGrid 샘플러 또는 None
+            주면 ``(C,S)`` **격자 샘플값**에서 스케일을 추정한다. 실행 경로가
+            ``normalize`` 를 격자 샘플에 적용하므로 이쪽이 맞다. 불균일 샘플링의
+            저역통과가 값을 크게 줄이기 때문에, 영상 해상도에서 추정한 계수를
+            격자 샘플에 쓰면 구동이 수십 배 약해져 망막이 통째로 침묵한다.
+            None 이면 영상 해상도 ``(C,H,W)`` 에서 추정한다 (옛 동작).
+        min_scale_ratio : float
+            채널 스케일의 하한을 ``min_scale_ratio * max(scale)`` 으로 둔다.
+            신호가 없는 채널의 수치 잔차가 1 근처로 증폭되어 망막을 구동하는
+            것을 막는다. 바닥에 걸린 채널 번호는 반환값에 남는다.
         """
         if not images:
             raise ValueError("정규화 추정에 쓸 영상이 없다")
         acc: list[np.ndarray] = []
         for img in images:
             out = self.encode(img)
+            if sampler is not None:
+                values, _ = sampler.sample(out.channels)
+                acc.append(np.asarray(values, dtype=np.float64))
+                continue
             acc.append(out.channels.reshape(out.channels.shape[0], -1))
         allv = np.concatenate(acc, axis=1)
-        scale = np.percentile(np.where(allv > 0, allv, np.nan), percentile, axis=1)
+        # 0 인 화소를 빼고 백분위를 잡는다. np.percentile 은 NaN 이 하나라도
+        # 있으면 NaN 을 돌려주므로 반드시 nanpercentile 을 써야 한다
+        # (그렇지 않으면 모든 채널이 degenerate 로 떨어져 스케일이 1.0 이 되고
+        #  정규화가 통째로 무효가 된다).
+        positive = np.where(allv > 0, allv, np.nan)
+        all_nan = ~np.isfinite(positive).any(axis=1)
+        scale = np.full(positive.shape[0], np.nan, dtype=np.float64)
+        if (~all_nan).any():
+            scale[~all_nan] = np.nanpercentile(positive[~all_nan], percentile, axis=1)
         scale = np.where(np.isfinite(scale) & (scale > 0), scale, 1.0)
+        # 신호가 사실상 없는 채널(예: 회색조 자극에서의 색 대립 채널)은 자기
+        # 백분위가 수치 잔차 수준이라 정규화하면 값이 1 근처까지 증폭된다.
+        # 그러면 내용이 없는 채널이 가장 센 채널과 같은 세기로 망막을 구동한다.
+        # 가장 큰 스케일의 일정 비율을 바닥으로 두어 이 증폭을 막는다.
+        floor = float(min_scale_ratio) * float(np.max(scale))
+        floored = [i for i, v in enumerate(scale) if v < floor]
+        scale = np.maximum(scale, floor)
         self.scale = scale.astype(np.float64)
         self.normalization_fitted = True
         self.normalization_source = source
         return {
             "percentile": float(percentile),
             "source_split": source,
+            "fit_representation": "grid_samples" if sampler is not None else "image_pixels",
+            "min_scale_ratio": float(min_scale_ratio),
+            "floored_channels": floored,
             "n_images": len(images),
             "scale": self.scale.tolist(),
             "degenerate_channels": [i for i, s in enumerate(self.scale) if s == 1.0],
@@ -290,6 +326,10 @@ class RetinaEncoder:
     def normalize(self, channels: np.ndarray) -> np.ndarray:
         """추정한 스케일로 나누고 [0,1] 로 자른다.
 
+        첫 축이 채널 축이면 뒤 축 수는 상관없다. ``(C,H,W)`` 영상 채널과
+        ``(C,S)`` 격자 샘플 모두에 쓸 수 있다. 채널 수가 맞지 않으면 조용히
+        방송(broadcast)해 버리지 않고 오류를 낸다.
+
         스케일을 아직 추정하지 않았다면 오류를 낸다 (조용히 1.0 을 쓰지 않는다).
         """
         if not self.normalization_fitted or self.scale is None:
@@ -297,7 +337,13 @@ class RetinaEncoder:
                 "채널 정규화 스케일이 아직 추정되지 않았다. "
                 "RetinaEncoder.fit_normalization(train_images) 를 먼저 호출하라."
             )
-        return np.clip(channels / self.scale[:, None, None], 0.0, 1.0)
+        arr = np.asarray(channels, dtype=np.float64)
+        if arr.ndim < 1 or arr.shape[0] != self.scale.size:
+            raise ValueError(
+                f"normalize() 의 첫 축은 채널 축이어야 한다: 입력 {arr.shape}, "
+                f"채널 수 {self.scale.size}")
+        shape = (self.scale.size,) + (1,) * (arr.ndim - 1)
+        return np.clip(arr / self.scale.reshape(shape), 0.0, 1.0)
 
     def normalization_state(self) -> dict[str, Any]:
         return {

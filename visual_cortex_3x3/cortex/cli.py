@@ -16,6 +16,12 @@
     python -m cortex.cli explain-neuron --run-dir runs/RUN_ID --neuron-id 12 \
                                         --from-ms 0 --to-ms 100
     python -m cortex.cli figures        --run-dir runs/RUN_ID
+    python -m cortex.cli run-all        --config v1_small --out D:/결과폴더
+
+``run-all`` 은 **지정한 폴더에 전체 과정을 자동으로 실행**한다. 사용자가 출력
+폴더를 명시해 직접 부르는 명령이므로 이 하나만 기본으로 실행되고, 계획만 보려면
+``--dry-run`` 을 준다. 나머지 수치 실험 명령은 여전히 ``--execute`` 가 있어야
+실행된다.
 """
 
 from __future__ import annotations
@@ -47,6 +53,39 @@ def _load_cfg(path: str) -> dict[str, Any]:
 
 def _progress(msg: str) -> None:
     print(f"  … {msg}", flush=True)
+
+
+def _config_loader(spec: str) -> dict[str, Any]:
+    """설정 이름/경로 -> 해석된 설정.
+
+    단일 파일 판에서는 내장 설정 이름도 받는다 (그때는 전역에
+    ``load_config_by_name_or_path`` 가 있다). 패키지 판에서는 JSON 경로다.
+    """
+    fn = globals().get("load_config_by_name_or_path") or globals().get("load_config")
+    if fn is not None:
+        return fn(spec)
+    from .config import load
+    return load(spec)
+
+
+def _expand_config_list(spec: str) -> list[str]:
+    """쉼표로 구분한 설정 목록을 펼친다. ``all`` 은 쓸 수 있는 설정 전부."""
+    out: list[str] = []
+    for item in str(spec).split(","):
+        item = item.strip()
+        if not item:
+            continue
+        if item.lower() != "all":
+            out.append(item)
+            continue
+        builtin = globals().get("BUILTIN_CONFIGS")
+        if builtin:
+            out += sorted(builtin)
+        else:
+            cfg_dir = PROJECT_ROOT / "configs"
+            out += [str(q) for q in sorted(cfg_dir.glob("*.json"))
+                    if not q.name.startswith("_")]
+    return out
 
 
 def _runner(cfg: dict[str, Any], run_dir: Path | None, command: str,
@@ -195,6 +234,41 @@ def cmd_figures(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_run_all(args: argparse.Namespace) -> int:
+    """전체 과정을 자동 실행하고 지정한 폴더에 결과를 쓴다."""
+    from .autorun import ALL_STAGES, run_everything
+
+    configs = _expand_config_list(args.config)
+    if not configs:
+        print("[오류] --config 에 설정 이름이나 경로를 하나 이상 주어야 한다.",
+              file=sys.stderr)
+        return 2
+    stages = [x.strip() for x in args.stages.split(",") if x.strip()] \
+        if args.stages else list(ALL_STAGES)
+    out = Path(args.out).expanduser()
+    print("=" * 70)
+    print(f"전체 자동 실행{' (dry-run)' if args.dry_run else ''}")
+    print(f"  출력 폴더 : {out.resolve()}")
+    print(f"  설정      : {configs}")
+    print(f"  단계      : {stages}")
+    print("  중단하려면 Ctrl+C. 중단해도 그때까지의 기록은 남는다.")
+    print("=" * 70)
+    try:
+        summary = run_everything(
+            out, configs, package_root=PACKAGE_ROOT, command=" ".join(sys.argv),
+            backend=args.backend, stages=stages, limit_stimuli=args.limit_stimuli,
+            duration_ms=args.duration_ms, seed=args.seed, dry_run=args.dry_run,
+            overwrite=args.overwrite, stop_on_fail=args.stop_on_fail,
+            config_loader=_config_loader, progress=None)
+    except FileExistsError as exc:
+        print(f"[오류] {exc}", file=sys.stderr)
+        return 2
+    print(f"\n전체 상태: {summary['experiment_status']}")
+    print(f"요약: {Path(summary['output_dir']) / 'summary.json'}")
+    print(f"한국어 요약: {Path(summary['output_dir']) / 'SUMMARY_ko.md'}")
+    return 0 if summary["all_stages_ok"] else 1
+
+
 def cmd_list_runs(args: argparse.Namespace) -> int:
     root = Path(args.runs_root) if args.runs_root else DEFAULT_RUNS
     if not root.is_dir():
@@ -273,6 +347,33 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--rebuild-model", action="store_true",
                     help="manifest 의 설정으로 모델을 다시 조립해 배치/지도 그림도 만든다")
     sp.set_defaults(func=cmd_figures)
+
+    sp = sub.add_parser(
+        "run-all",
+        help="전체 과정을 자동 실행하고 지정한 폴더에 결과를 쓴다 (기본으로 실행됨)")
+    sp.add_argument("--out", required=True,
+                    help="결과를 쓸 폴더 (없으면 만든다). 공백/한글 경로 가능")
+    sp.add_argument("--config", default="minimal",
+                    help="설정 이름/경로. 쉼표로 여러 개, 'all' 이면 전부 "
+                         "(기본: minimal)")
+    sp.add_argument("--stages", default="",
+                    help="실행할 단계 (쉼표 구분). 기본은 전부: "
+                         "config_check,validate,simulate,experiment,reference,"
+                         "report,figures")
+    sp.add_argument("--backend", default="auto", choices=["auto", "hdf5", "npz"],
+                    help="기록 백엔드. auto 는 h5py 가 없으면 npz 로 바꾸고 알린다")
+    sp.add_argument("--limit-stimuli", type=int, default=0,
+                    help="자극 수를 앞에서부터 N개로 제한 (0 이면 제한 없음)")
+    sp.add_argument("--duration-ms", type=float, default=None,
+                    help="engine.duration_ms 덮어쓰기")
+    sp.add_argument("--seed", type=int, default=None, help="seeds.master 덮어쓰기")
+    sp.add_argument("--overwrite", action="store_true",
+                    help="이미 완료된 결과 폴더를 옆으로 옮기고 새로 쓴다")
+    sp.add_argument("--stop-on-fail", action="store_true",
+                    help="한 단계라도 실패하면 즉시 중단")
+    sp.add_argument("--dry-run", action="store_true",
+                    help="계획과 규모만 계산하고 실행하지 않는다")
+    sp.set_defaults(func=cmd_run_all)
 
     sp = sub.add_parser("list-runs", help="실행 기록 목록")
     sp.add_argument("--runs-root", default=None)

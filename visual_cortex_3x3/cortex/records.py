@@ -546,6 +546,24 @@ class NeuronRecord:
         }
 
 
+# ``frozen=True`` 가 만든 ``__setattr__`` 은 property setter 까지 막는다.
+# 식별 필드(population, neuron_id)는 계속 막되, 3x3 기록 인터페이스에서 쓰기가
+# 정의된 칸(threshold, output_gain_P)은 타입 배열에 바로 쓰게 열어 준다.
+# dataclass 는 클래스 본문 안의 ``__setattr__`` 정의를 거부하므로 여기서 건다.
+_FROZEN_RECORD_SETATTR = NeuronRecord.__setattr__
+
+
+def _record_setattr(self: NeuronRecord, name: str, value: Any) -> None:
+    prop = getattr(type(self), name, None)
+    if isinstance(prop, property) and prop.fset is not None:
+        prop.fset(self, value)
+        return
+    _FROZEN_RECORD_SETATTR(self, name, value)
+
+
+NeuronRecord.__setattr__ = _record_setattr
+
+
 class NeuronPopulation:
     """뉴런 집단: 상태 배열 + ID 레지스트리 + (선택) 시냅스/로그 부착.
 

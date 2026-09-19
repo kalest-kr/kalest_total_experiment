@@ -13,7 +13,7 @@ import json
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 import numpy as np
 
@@ -22,7 +22,8 @@ from . import areas as areas_mod
 from . import plasticity as plasticity_mod
 from . import rng as rng_mod
 from . import stimuli as stimuli_mod
-from .config import SizeEstimate, config_hash, estimate_sizes
+from .config import (SizeEstimate, config_hash, drive_headroom_warnings,
+                     estimate_sizes)
 from .dynamics import Engine, ExternalDrive, rates_to_drive
 from .events import CapacityExceeded, EventLog
 from .recording import (
@@ -107,6 +108,114 @@ def select_recording_neurons(cfg: dict[str, Any], model: Model) -> np.ndarray:
 
 
 # ----------------------------------------------------------------------
+def transmission_headroom(cfg: dict[str, Any], model: "Model") -> dict[str, Any]:
+    """배선 규칙마다 **시냅스 전달이 임계에 닿을 수 있는지** 손계산한다.
+
+    ``conductance_lif`` 모드의 정상상태 근사::
+
+        g_need = gL * (V_th - EL) / (E_rev - V_th)      [nS]
+        g(R)   = deg * w * (tau/1000) * R               [nS]
+        R_need = g_need / (deg * w * tau/1000)          [Hz]
+
+    ``deg`` 는 이 규칙이 표적 뉴런 1개에 만든 평균 시냅스 수, ``w`` 는 평균
+    가중치다. 앞 영역이 낼 수 있는 최대 발화율은 불응기로 막히므로
+    ``1000 / t_ref_ms`` 를 상한으로 쓴다. ``R_need`` 가 그 상한을 넘으면 그
+    단계는 **어떤 입력에도 전달되지 않는다** — 실행은 오류 없이 끝나고 결과만
+    조용히 비게 되므로 여기서 미리 표시한다.
+
+    흥분성 규칙만 본다 (억제는 임계를 넘길 일이 없다). 단일 구획 정상상태
+    근사이므로 정확한 예측이 아니라 **자릿수 점검**이다.
+    """
+    if cfg["engine"]["mode"] != "conductance_lif":
+        return {"applicable": False,
+                "reason_ko": "conductance_lif 모드에서만 계산한다."}
+    a = model.anat.population.arrays
+    t = model.table
+    ids = model.anat.ids
+    rows: list[dict[str, Any]] = []
+    blocked: list[str] = []
+    for r_idx, rule in enumerate(cfg["wiring"]["rules"]):
+        if not rule.get("enabled", True):
+            continue
+        rec = cfg["receptors"][rule["receptor"]]
+        if rec["kind"] != "excitatory":
+            continue
+        sel = t.rule_index == r_idx
+        n = int(sel.sum())
+        if n == 0:
+            continue
+        dst = t.dst_id[sel].astype(np.int64)
+        src = t.src_id[sel].astype(np.int64)
+        targets = np.unique(dst)
+        deg = n / max(1, targets.size)
+        w = float(t.weight[sel].mean())
+        comp = int(np.bincount(t.target_compartment[sel].astype(np.int64)).argmax())
+        gL = float(a.gL_nS[targets, comp].mean())
+        EL = float(a.EL_mV[targets, comp].mean())
+        V_th = float(a.threshold[targets].mean())
+        E_rev = float(rec["E_rev_mV"])
+        tau_s = float(rec["tau_ms"]) / 1000.0
+        driving = E_rev - V_th
+        if driving <= 0.0 or deg <= 0.0 or w <= 0.0:
+            continue
+        g_need = gL * (V_th - EL) / driving
+        rate_need = g_need / (deg * w * tau_s)
+        src_u = np.unique(src)
+        t_ref = float(np.mean(a.t_ref_ms[src_u]))
+        rate_max = 1000.0 / t_ref if t_ref > 0 else float("inf")
+        # 망막은 불응기가 아니라 외부 구동이 상한을 정한다. 실제로 낼 수 없는
+        # 발화율을 근거로 "닿는다" 고 적으면 진단이 무의미해진다.
+        src_area_name = ids.areas.name_of(int(a.area_id[src_u[0]]))
+        if cfg["anatomy"]["areas"][src_area_name]["kind"] == "retina":
+            drive = cfg["retina"]["drive"]
+            rate_max = min(rate_max,
+                           float(drive["baseline_rate_hz"])
+                           + float(drive["gain"]) * float(drive["max_rate_hz"]))
+        ok = rate_need <= rate_max
+        rows.append({
+            "rule": rule["name"], "n_synapses": n,
+            "mean_in_degree": round(deg, 3), "mean_weight_nS": round(w, 4),
+            "g_need_nS": round(g_need, 4),
+            "presyn_rate_needed_hz": round(rate_need, 2),
+            "presyn_rate_max_hz": round(rate_max, 2),
+            "presyn_area": src_area_name,
+            "reachable": bool(ok),
+        })
+        if not ok:
+            blocked.append(rule["name"])
+    return {
+        "applicable": True, "rules": rows, "blocked_rules": blocked,
+        "note_ko": ("단일 구획 정상상태 근사다. 정확한 예측이 아니라 자릿수 "
+                    "점검이며, reachable=false 인 단계는 앞 영역이 최대 속도로 "
+                    "발화해도 표적을 임계까지 올리지 못한다는 뜻이다."),
+    }
+
+
+def silent_area_report(results: Sequence["SampleResult"]) -> dict[str, Any]:
+    """모든 표본에서 한 번도 발화하지 않은 영역을 찾는다.
+
+    앞 영역이 발화했는데 뒤 영역이 전부 침묵했다면 그 사이 전달이 끊긴 것이다.
+    "스파이크 0건" 은 오류 없이 끝나므로 결과를 읽는 사람이 모형의 결론으로
+    오해하기 쉽다. 여기서 명시적으로 남긴다.
+    """
+    totals: dict[str, int] = {}
+    for r in results:
+        for area, n in r.spikes_by_area.items():
+            totals[area] = totals.get(area, 0) + int(n)
+    silent = sorted(k for k, v in totals.items() if v == 0)
+    active = sorted(k for k, v in totals.items() if v > 0)
+    return {
+        "spikes_by_area_total": totals,
+        "silent_areas": silent,
+        "active_areas": active,
+        "all_silent": bool(totals) and not active,
+        "note_ko": ("침묵한 영역이 있으면 시냅스 전달이 임계에 닿는지 "
+                    "manifest 의 transmission_headroom 을 보라. 가중치·발화율 "
+                    "상한이 모자라면 그 단계는 어떤 입력에도 반응하지 않는다."),
+    }
+
+
+# ----------------------------------------------------------------------
 @dataclass
 class SampleResult:
     sample_index: int
@@ -155,6 +264,7 @@ class ExperimentRunner:
             warnings.append(
                 f"추정 RAM {est.ram_mb_estimated:.0f} MB 가 한도 "
                 f"{lim['max_ram_mb']} MB 를 넘는다.")
+        warnings.extend(drive_headroom_warnings(self.cfg))
         return {
             "config_name": self.cfg["meta"]["name"],
             "config_sha256": config_hash(self.cfg),
@@ -170,6 +280,8 @@ class ExperimentRunner:
 
     # ------------------------------------------------------------------
     def _prepare(self, recorder: RunRecorder) -> Model:
+        for msg in drive_headroom_warnings(self.cfg):
+            recorder.warn(msg)
         rngs = rng_mod.from_config(self.cfg)
         t0 = time.time()
         self.progress("모델을 조립하는 중...")
@@ -187,6 +299,13 @@ class ExperimentRunner:
         recorder.manifest["recording"]["selection_criterion"] = (
             self.cfg["recording"]["selection_criterion"]
             or "영역마다 균등 간격으로 뽑은 표본 (recording.selected_neurons 미지정)")
+        head = transmission_headroom(self.cfg, model)
+        recorder.manifest["transmission_headroom"] = head
+        for name in head.get("blocked_rules", []):
+            recorder.warn(
+                f"배선 규칙 {name!r} 은 앞 영역이 최대 속도로 발화해도 표적을 "
+                f"임계까지 올리지 못한다 (manifest 의 transmission_headroom 참조). "
+                f"이 단계 뒤쪽 영역은 어떤 입력에도 침묵할 수 있다.")
         recorder._write_manifest()
         model.engine.recorder = recorder
         return model
@@ -278,13 +397,15 @@ class ExperimentRunner:
             model = self._prepare(recorder)
             ckpt = CheckpointManager(recorder, self.cfg["checkpoint"]["keep_last"])
             rng_stim = model.rngs.get("stimulus")
-            stims = stimuli_mod.generate(self.cfg, rng_stim)
+            stims = self._apply_stimulus_cap(
+                stimuli_mod.generate(self.cfg, rng_stim), recorder)
             if not stims:
                 raise ValueError("experiment.stimuli 가 비어 있어 제시할 자극이 없다")
-            recorder.log(f"자극 {len(stims)}개 생성")
+            recorder.log(f"자극 {len(stims)}개 제시 예정")
 
             fit_imgs = [s.frames[0] for s in stims[:min(len(stims), 16)]]
-            norm = model.encoder.fit_normalization(fit_imgs, source="simulate_prefix")
+            norm = model.encoder.fit_normalization(fit_imgs, source="simulate_prefix",
+                                                   sampler=model.sampler)
             recorder.manifest["input_normalization"] = norm
             recorder.manifest["input_normalization"]["note_ko"] = (
                 "simulate 명령은 제시 자극 앞부분으로 정규화 계수를 추정한다. "
@@ -325,10 +446,16 @@ class ExperimentRunner:
             self._write_aggregates(recorder, model)
             recorder.manifest["event_log_schema"] = model.event_log.schema()
             recorder.manifest["plasticity_summary"] = model.plasticity.summary()
+            silent = silent_area_report(results)
+            recorder.manifest["silent_areas"] = silent
+            for area in silent["silent_areas"]:
+                recorder.warn(f"영역 {area!r} 이 모든 표본에서 한 번도 발화하지 "
+                              f"않았다. 결과를 모형의 결론으로 읽지 말 것.")
             recorder._write_manifest()
             return {"status": STATUS_COMPLETED, "run_dir": str(self.run_dir),
                     "n_samples": len(results),
-                    "n_events": model.event_log.n_events}
+                    "n_events": model.event_log.n_events,
+                    "silent_areas": silent["silent_areas"]}
 
     # ------------------------------------------------------------------
     def experiment(self) -> dict[str, Any]:
@@ -343,7 +470,8 @@ class ExperimentRunner:
                          self.package_root) as recorder:
             model = self._prepare(recorder)
             ckpt = CheckpointManager(recorder, self.cfg["checkpoint"]["keep_last"])
-            stims = stimuli_mod.generate(self.cfg, model.rngs.get("stimulus"))
+            stims = self._apply_stimulus_cap(
+                stimuli_mod.generate(self.cfg, model.rngs.get("stimulus")), recorder)
             splits = stimuli_mod.split_stimuli(stims, self.cfg, model.rngs.get("split"))
             report = stimuli_mod.split_report(splits)
             recorder.manifest["splits"] = report
@@ -351,7 +479,8 @@ class ExperimentRunner:
                 raise ValueError(f"분할이 겹친다: {report['overlaps']}")
 
             norm = model.encoder.fit_normalization(
-                [s.frames[0] for s in splits["train"]], source="train")
+                [s.frames[0] for s in splits["train"]], source="train",
+                sampler=model.sampler)
             recorder.manifest["input_normalization"] = norm
             recorder.manifest["test_access"] = {
                 "n_test_evaluations": 0,
@@ -364,6 +493,7 @@ class ExperimentRunner:
                             "dev": False, "test": False}
             features: dict[str, list[np.ndarray]] = {}
             labels: dict[str, list[str]] = {}
+            all_results: list[SampleResult] = []
             idx = 0
             for split in ("train", "dev", "test"):
                 feats: list[np.ndarray] = []
@@ -374,6 +504,7 @@ class ExperimentRunner:
                     before = model.anat.population.arrays.spike_count.copy()
                     r = self._run_sample(model, recorder, st, idx, learn_splits[split])
                     idx += 1
+                    all_results.append(r)
                     recorder.metric(kind="sample", split=split, **r.to_dict())
                     feats.append(self._readout_features(model, before))
                     labs.append(st.label)
@@ -398,9 +529,33 @@ class ExperimentRunner:
             recorder.record_events(model.event_log)
             self._write_aggregates(recorder, model)
             recorder.manifest["plasticity_summary"] = model.plasticity.summary()
+            silent = silent_area_report(all_results)
+            recorder.manifest["silent_areas"] = silent
+            for area in silent["silent_areas"]:
+                recorder.warn(f"영역 {area!r} 이 모든 표본에서 한 번도 발화하지 "
+                              f"않았다. 결과를 모형의 결론으로 읽지 말 것.")
             recorder._write_manifest()
             return {"status": STATUS_COMPLETED, "run_dir": str(self.run_dir),
-                    "splits": report["counts"]}
+                    "splits": report["counts"],
+                    "silent_areas": silent["silent_areas"]}
+
+    def _apply_stimulus_cap(self, stims: list[Any], recorder: RunRecorder) -> list[Any]:
+        """``experiment.max_stimuli`` 로 자극 수를 자른다 (0 이면 그대로).
+
+        자른 사실은 manifest 와 경고 로그에 남긴다. 조용히 줄이지 않는다.
+        """
+        cap = int(self.cfg["experiment"]["max_stimuli"])
+        if cap <= 0 or len(stims) <= cap:
+            recorder.manifest["stimulus_cap"] = {"cap": cap, "n_generated": len(stims),
+                                                 "n_used": len(stims), "truncated": False}
+            recorder._write_manifest()
+            return list(stims)
+        recorder.warn("experiment.max_stimuli 로 자극 목록을 앞에서부터 잘랐다.",
+                      n_generated=len(stims), n_used=cap)
+        recorder.manifest["stimulus_cap"] = {"cap": cap, "n_generated": len(stims),
+                                             "n_used": cap, "truncated": True}
+        recorder._write_manifest()
+        return list(stims[:cap])
 
     def _readout_features(self, model: Model, spikes_before: np.ndarray) -> np.ndarray:
         """IT(또는 지정 영역) 집단 활동을 특징 벡터로 만든다.
@@ -478,10 +633,12 @@ class ExperimentRunner:
                 "allow_mismatch": bool(allow_mismatch),
             }
             recorder._write_manifest()
-            stims = stimuli_mod.generate(self.cfg, model.rngs.get("stimulus"))
+            stims = self._apply_stimulus_cap(
+                stimuli_mod.generate(self.cfg, model.rngs.get("stimulus")), recorder)
             start = int(meta["sample_index"]) + 1
             model.encoder.fit_normalization(
-                [s.frames[0] for s in stims[:min(len(stims), 16)]], source="resume")
+                [s.frames[0] for s in stims[:min(len(stims), 16)]],
+                source="resume", sampler=model.sampler)
             learn = self.cfg["learning"]["mode"] == "stdp_homeostasis"
             for i in range(start, len(stims)):
                 self.progress(f"재개 {i + 1}/{len(stims)} — 중단하려면 Ctrl+C")

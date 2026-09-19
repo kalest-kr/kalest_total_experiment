@@ -190,11 +190,68 @@ assumptions {species_assumption, note_ko}, experiment_status,
 model {n_neurons, n_synapses, wiring, anatomy, synapse_summary},
 input_normalization, splits, test_access {n_test_evaluations, note_ko},
 plasticity_summary, event_log_schema, resumed_from,
-n_state_rows_written, n_state_rows_skipped_by_limit
+n_state_rows_written, n_state_rows_skipped_by_limit,
+transmission_headroom, silent_areas, stimulus_cap
 ```
 
 `status ∈ {running, completed, interrupted, failed}`.
 **이미 `completed` 인 디렉터리는 덮어쓰지 않는다** (`--run-dir` 를 새로 주어야 한다).
+
+### 7.1 `input_normalization`
+
+```
+percentile            백분위 (기본 99)
+source_split          추정에 쓴 분할 이름 (train / simulate_prefix / resume / ...)
+fit_representation    "grid_samples" | "image_pixels"
+                      normalize() 를 적용하는 표현과 같아야 한다
+min_scale_ratio       채널 스케일의 바닥 = min_scale_ratio * max(scale)
+floored_channels      바닥에 걸린 채널 번호 (신호가 거의 없는 채널)
+n_images, scale, degenerate_channels
+```
+
+### 7.2 `transmission_headroom` (실행 전 진단)
+
+흥분성 배선 규칙마다 **시냅스 전달이 임계에 닿을 수 있는지** 손계산한 결과다.
+`conductance_lif` 모드에서만 채워진다 (`applicable: false` 면 계산하지 않음).
+
+```
+rules[]:
+  rule                     규칙 이름
+  n_synapses               이 규칙이 만든 시냅스 수
+  mean_in_degree           표적 뉴런 1개당 평균 시냅스 수
+  mean_weight_nS           평균 가중치
+  g_need_nS                gL * (V_th - EL) / (E_rev - V_th)
+  presyn_rate_needed_hz    g_need / (deg * w * tau/1000)
+  presyn_rate_max_hz       앞 영역이 낼 수 있는 상한
+                           (피질: 1000/t_ref, 망막: 외부 구동 상한)
+  presyn_area              앞 영역 이름
+  reachable                needed <= max
+blocked_rules[]            reachable=false 인 규칙 이름
+```
+
+단일 구획 정상상태 근사이므로 정확한 예측이 아니라 **자릿수 점검**이다.
+`blocked_rules` 가 비어 있지 않으면 그 뒤 영역은 어떤 입력에도 침묵할 수 있다.
+
+### 7.3 `silent_areas` (실행 후 진단)
+
+```
+spikes_by_area_total   영역별 총 스파이크 수
+silent_areas[]         모든 표본에서 한 번도 발화하지 않은 영역
+active_areas[]         한 번이라도 발화한 영역
+all_silent             전부 침묵했는가
+```
+
+`silent_areas` 가 비어 있지 않으면 그 영역의 0 은 **모형의 결론이 아니다.**
+`transmission_headroom` 을 먼저 보라.
+
+### 7.4 `stimulus_cap`
+
+```
+cap, n_generated, n_used, truncated
+```
+
+`experiment.max_stimuli` (또는 `run-all --limit-stimuli`) 로 자극을 잘랐는지.
+조용히 줄이지 않고 항상 기록한다.
 
 ---
 
@@ -248,3 +305,45 @@ diagnostics, readout, split, stimulus`). Python 의 실행별 `hash()` 에 의�
 * `recording.mode = "selected"` 에서 선택되지 않은 뉴런의 사건
 * `poisson` 모드에서 한 스텝에 2건 이상 발생한 사건 (1 스파이크로 잘리며,
   잘린 건수는 `errors.jsonl` 에 경고로 기록된다)
+
+---
+
+## 12. 자동 실행 출력 (`run-all`)
+
+`run-all --out <폴더>` 는 아래 구조를 만든다. 각 단계 폴더의 내부는 위에서
+설명한 실행 기록 구조 그대로다.
+
+```
+<출력폴더>/
+  summary.json      전체 요약 (아래)
+  SUMMARY_ko.md     사람이 읽는 한국어 요약. summary.json 에서만 생성한다
+  run_all.log       진행 로그
+  <설정이름>/
+    01_config_check/inspect.json
+    02_validate/    03_simulate/    04_experiment/    05_reference/
+```
+
+번호는 고른 단계 순서가 아니라 **고정 위치**다. 일부 단계만 돌려도 전체 실행과
+같은 경로가 나온다.
+
+`summary.json`:
+
+```
+started_utc, finished_utc, elapsed_sec, command, output_dir,
+configs[], stages[], dry_run, backend_choice, library_versions,
+experiment_status, all_stages_ok,
+results: {
+  <설정이름>: {
+    config, config_sha256, notes[],        notes 에 덮어쓴 설정 값이 남는다
+    stages: [ {stage, title_ko, status, elapsed_sec, output_dir, detail, error} ]
+  }
+}
+```
+
+`status ∈ {completed, failed, skipped, dry_run}`. `skipped` 는 `completed` 에
+포함하지 않는다.
+
+`05_reference/reference.json` 에는 Rao 참조 모델 요약·유한차분 결과, 고정 Gabor
+대조 경로의 방향 튜닝·위상 스윕·명암 반전, `explain_neuron` 결과, 소거 재실행
+비교가 들어간다. 고정 Gabor 경로의 선택성은 **학습된 것이 아니다** (그 사실이
+`learned: false` 로 함께 저장된다).

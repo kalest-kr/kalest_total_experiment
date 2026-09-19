@@ -17,6 +17,7 @@ MENU = """
   3x3 뉴런 기록 구조 시각피질 시뮬레이터 (단일 파일 판)
   (망막 - LGN - V1 - V2 - V3 - V4 - IT, 연구용)
 ==================================================================
+  A) 전체 자동 실행 — 내가 지정한 폴더에 모든 결과를 쓴다
   1) 최소 모델 검증 실행           (내장 설정 minimal)
   2) V1 시뮬레이션 실행             (내장 설정 v1_small)
   3) 전체 시각 경로 작은 모델 실험  (내장 설정 hierarchy_small)
@@ -27,6 +28,9 @@ MENU = """
   8) 실행 기록 목록 보기
   9) 내장 설정 자체 점검 (configs/*.json 이 있으면 비교)
   0) 종료
+------------------------------------------------------------------
+  A) 를 고르면 설정 확인 -> 검증 -> 시뮬레이션 -> 실험 -> 참조 모델
+  -> 보고서 -> 그림 까지 한 번에 돌리고 결과를 지정 폴더에 정리한다.
 ==================================================================
 """
 
@@ -150,6 +154,35 @@ def _menu_resume() -> None:
     cli_main(["resume", "--run-dir", run_dir, "--execute"])
 
 
+def _menu_run_all() -> None:
+    """전체 과정을 자동 실행하고 사용자가 지정한 폴더에 결과를 쓴다."""
+    out = _ask("결과를 쓸 폴더 (예: D:/결과폴더, 공백/한글 가능)", "")
+    if not out:
+        print("  결과 폴더를 반드시 입력해야 한다. 아무 것도 실행하지 않았다.")
+        return
+    spec = _ask("설정 (내장 이름/경로, 쉼표로 여러 개, 'all' 이면 내장 전부)",
+                "minimal")
+    stages = _ask("실행할 단계 (쉼표 구분, 비우면 전부)", "")
+    limit = _ask("자극 수 제한 (0 이면 제한 없음)", "0")
+    dry = _ask("계획만 보고 실행은 하지 않을까? (y/N)", "N").lower() == "y"
+    try:
+        limit_n = int(limit)
+    except ValueError:
+        print("  자극 수 제한은 정수여야 한다.")
+        return
+    argv = ["run-all", "--out", out, "--config", spec,
+            "--limit-stimuli", str(limit_n)]
+    if stages:
+        argv += ["--stages", stages]
+    if dry:
+        argv += ["--dry-run"]
+    print("\n[전체 자동 실행] 을(를) 시작한다.")
+    print("  중단하려면 Ctrl+C 를 누르면 된다. 중단해도 그때까지의 기록은 남는다.")
+    code = cli_main(argv)
+    print(f"\n[완료] 종료 코드 {code}. 결과는 {out} 아래에 있다.")
+    print(f"  요약: {Path(out) / 'SUMMARY_ko.md'}")
+
+
 def _menu_inspect() -> None:
     cfg = _resolve_config_choice(_ask("설정 (내장 이름 또는 파일 경로)", "v1_small"))
     if cfg is None:
@@ -172,7 +205,9 @@ def menu_main() -> int:
             if choice == "0":
                 print("종료한다. (다른 실험을 자동으로 실행하지 않는다.)")
                 return 0
-            if choice in PRESETS:
+            if choice in ("a", "A"):
+                _menu_run_all()
+            elif choice in PRESETS:
                 _run_preset(choice)
             elif choice == "4":
                 _menu_report()
@@ -187,7 +222,8 @@ def menu_main() -> int:
             elif choice == "9":
                 selftest()
             else:
-                print(f"  '{choice}' 은(는) 없는 번호다. 0~9 중에서 고르라.")
+                print(f"  '{choice}' 은(는) 없는 번호다. "
+                      f"A 또는 0~9 중에서 고르라.")
         except KeyboardInterrupt:
             print("\n[중단] 작업을 중단했다. 기록은 runs/ 아래에 남아 있고 "
                   "메뉴 6) 으로 재개할 수 있다.")
@@ -237,12 +273,14 @@ def selftest() -> int:
                     print(f"      다른 항목: {key}")
             n_diff += 1
     print(f"\n일치 {n_ok} / 다름 {n_diff} / 건너뜀 {n_skip}")
-    print("이 점검은 설정 스키마만 본다. 수치 실험 상태는 여전히 not_run 이다.")
+    print("이 점검은 설정 스키마만 본다. 시뮬레이션·학습은 실행하지 않았다.")
+    print("과학적 수치 실험을 돌리려면 run-all 또는 --execute 명령을 쓰라.")
     return 0 if n_diff == 0 else 1
 
 
 _CLI_COMMANDS = {"inspect-config", "validate", "simulate", "experiment",
-                 "resume", "report", "explain-neuron", "figures", "list-runs"}
+                 "resume", "report", "explain-neuron", "figures", "list-runs",
+                 "run-all"}
 
 
 def entry(argv: list[str] | None = None) -> int:
@@ -251,6 +289,7 @@ def entry(argv: list[str] | None = None) -> int:
         python cortex_all_in_one.py                       -> 메뉴
         python cortex_all_in_one.py selftest              -> 내장 설정 점검
         python cortex_all_in_one.py validate --config minimal --execute
+        python cortex_all_in_one.py run-all --config minimal --out D:/결과폴더
     """
     args = list(sys.argv[1:] if argv is None else argv)
     if not args:

@@ -42,6 +42,7 @@ ORDER = [
     ("analysis", "저장된 기록에서만 읽는 분석·조회·보고서"),
     ("visualization", "저장된 기록을 읽어 그림 생성"),
     ("validation", "필수 검증 1~14"),
+    ("autorun", "전체 자동 실행 오케스트레이션"),
     ("cli", "명령행 인터페이스"),
 ]
 
@@ -66,8 +67,14 @@ ALIAS_CALLS = {
     "plasticity_mod.make(": "make_plasticity(",
     "rng_mod.from_config(": "rng_from_config(",
     "stimuli_mod.generate(": "generate_stimuli(",
+    # config 모듈은 이름이 바뀌므로 괄호 없이도 바꾼다 (함수 객체로 넘기는 곳이 있다).
+    "config_mod.load": "load_config",
+    "config_mod.resolve": "resolve_config",
+    "config_mod.validate": "validate_config",
 }
-ALIAS_PREFIX = re.compile(r"\b(anatomy_mod|areas_mod|plasticity_mod|rng_mod|stimuli_mod)\.")
+ALIAS_PREFIX = re.compile(
+    r"\b(anatomy_mod|areas_mod|config_mod|plasticity_mod|rng_mod|stimuli_mod"
+    r"|validation_mod)\.")
 
 REL_IMPORT_LINE = re.compile(r"^\s*from \.[A-Za-z_]* import .*$|^\s*from \. import .*$")
 
