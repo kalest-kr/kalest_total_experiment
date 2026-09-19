@@ -68,14 +68,19 @@ def _config_loader(spec: str) -> dict[str, Any]:
     return load(spec)
 
 
+#: "전부" 를 뜻하는 표기들. ``*`` 는 셸이 펼치지 않고 그대로 들어오는 경우가
+#: 많고(특히 Windows), 폴더 이름으로 쓸 수 없는 문자라 여기서 처리해야 한다.
+_ALL_ALIASES = {"all", "*", "전부", "모두"}
+
+
 def _expand_config_list(spec: str) -> list[str]:
-    """쉼표로 구분한 설정 목록을 펼친다. ``all`` 은 쓸 수 있는 설정 전부."""
+    """쉼표로 구분한 설정 목록을 펼친다. ``all`` / ``*`` 는 쓸 수 있는 설정 전부."""
     out: list[str] = []
     for item in str(spec).split(","):
         item = item.strip()
         if not item:
             continue
-        if item.lower() != "all":
+        if item.lower() not in _ALL_ALIASES:
             out.append(item)
             continue
         builtin = globals().get("BUILTIN_CONFIGS")
@@ -354,7 +359,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--out", required=True,
                     help="결과를 쓸 폴더 (없으면 만든다). 공백/한글 경로 가능")
     sp.add_argument("--config", default="minimal",
-                    help="설정 이름/경로. 쉼표로 여러 개, 'all' 이면 전부 "
+                    help="설정 이름/경로. 쉼표로 여러 개, 'all' 또는 '*' 이면 전부 "
                          "(기본: minimal)")
     sp.add_argument("--stages", default="",
                     help="실행할 단계 (쉼표 구분). 기본은 전부: "

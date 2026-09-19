@@ -9201,6 +9201,37 @@ _DONE_MARKERS: dict[str, tuple[str, ...]] = {
 }
 
 
+#: Windows 파일 이름에 쓸 수 없는 문자들. 리눅스에서는 되지만 Windows 에서는
+#: ``OSError: [WinError 123]`` 으로 실패하므로 폴더 이름을 만들 때 걸러 낸다.
+_UNSAFE_NAME_CHARS = '<>:"/\\|?*'
+
+
+#: Windows 가 폴더로 만들 수 없는 예약된 장치 이름 (확장자가 붙어도 안 된다).
+_RESERVED_NAMES = (
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{i}" for i in range(1, 10)}
+    | {f"LPT{i}" for i in range(1, 10)}
+)
+
+
+def safe_dir_name(name: str) -> str:
+    """설정 이름/경로 -> 어느 OS 에서나 쓸 수 있는 폴더 이름.
+
+    ``--config *`` 처럼 파일 이름에 못 쓰는 문자가 들어오면 Windows 에서
+    ``mkdir`` 이 ``OSError: [WinError 123]`` 으로 죽는다. 못 쓰는 문자는 ``_`` 로
+    바꾸고, 뜻이 남지 않으면 ``unnamed`` 을 쓴다. 끝의 공백과 마침표도 Windows
+    에서 조용히 잘리므로 미리 없앤다. 예약 장치 이름(``CON`` 등)도 피한다.
+    """
+    stem = Path(str(name)).stem or str(name)
+    cleaned = "".join("_" if c in _UNSAFE_NAME_CHARS or ord(c) < 32 else c
+                      for c in stem).strip(" .")
+    if not cleaned.strip("_"):          # 바뀐 문자만 남았으면 이름이 없는 것과 같다
+        return "unnamed"
+    if cleaned.upper() in _RESERVED_NAMES:
+        return f"{cleaned}_"
+    return cleaned
+
+
 def _prepare_dir(path: Path, overwrite: bool,
                  done_files: Sequence[str] = ()) -> str | None:
     """결과 폴더를 준비한다. 완료된 기록이 있으면 덮어쓰지 않는다."""
@@ -9508,10 +9539,12 @@ def run_everything(out_dir: str | Path, configs: Sequence[str], *,
     for name in configs:
         emit("=" * 70)
         emit(f"설정 '{name}' 시작")
-        cfg_dir = out_root / Path(name).stem
-        cfg_dir.mkdir(parents=True, exist_ok=True)
+        key = safe_dir_name(name)
         entry: dict[str, Any] = {"config": name, "stages": [], "notes": []}
-        summary["results"][Path(name).stem] = entry
+        summary["results"][key] = entry
+        # 설정을 **먼저** 읽는다. 읽지 못할 이름으로 폴더부터 만들면
+        # Windows 에서 쓸 수 없는 문자(예: '*')가 그대로 경로가 되어
+        # OSError: [WinError 123] 으로 죽는다.
         try:
             cfg, notes = prepare_config(name, backend=backend,
                                         max_stimuli=limit_stimuli,
@@ -9522,6 +9555,8 @@ def run_everything(out_dir: str | Path, configs: Sequence[str], *,
             entry["config_error"] = f"{type(exc).__name__}: {exc}"
             overall_ok = False
             continue
+        cfg_dir = out_root / key
+        cfg_dir.mkdir(parents=True, exist_ok=True)
         entry["notes"] = notes
         entry["config_sha256"] = config_hash(cfg)
         for n in notes:
@@ -9779,14 +9814,19 @@ def _config_loader(spec: str) -> dict[str, Any]:
     return load(spec)
 
 
+#: "전부" 를 뜻하는 표기들. ``*`` 는 셸이 펼치지 않고 그대로 들어오는 경우가
+#: 많고(특히 Windows), 폴더 이름으로 쓸 수 없는 문자라 여기서 처리해야 한다.
+_ALL_ALIASES = {"all", "*", "전부", "모두"}
+
+
 def _expand_config_list(spec: str) -> list[str]:
-    """쉼표로 구분한 설정 목록을 펼친다. ``all`` 은 쓸 수 있는 설정 전부."""
+    """쉼표로 구분한 설정 목록을 펼친다. ``all`` / ``*`` 는 쓸 수 있는 설정 전부."""
     out: list[str] = []
     for item in str(spec).split(","):
         item = item.strip()
         if not item:
             continue
-        if item.lower() != "all":
+        if item.lower() not in _ALL_ALIASES:
             out.append(item)
             continue
         builtin = globals().get("BUILTIN_CONFIGS")
@@ -10054,7 +10094,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--out", required=True,
                     help="결과를 쓸 폴더 (없으면 만든다). 공백/한글 경로 가능")
     sp.add_argument("--config", default="minimal",
-                    help="설정 이름/경로. 쉼표로 여러 개, 'all' 이면 전부 "
+                    help="설정 이름/경로. 쉼표로 여러 개, 'all' 또는 '*' 이면 전부 "
                          "(기본: minimal)")
     sp.add_argument("--stages", default="",
                     help="실행할 단계 (쉼표 구분). 기본은 전부: "
@@ -11355,7 +11395,7 @@ def _menu_run_all() -> None:
     if not out:
         print("  결과 폴더를 반드시 입력해야 한다. 아무 것도 실행하지 않았다.")
         return
-    spec = _ask("설정 (내장 이름/경로, 쉼표로 여러 개, 'all' 이면 내장 전부)",
+    spec = _ask("설정 (내장 이름/경로, 쉼표로 여러 개, 'all' 또는 '*' 이면 전부)",
                 "minimal")
     stages = _ask("실행할 단계 (쉼표 구분, 비우면 전부)", "")
     limit = _ask("자극 수 제한 (0 이면 제한 없음)", "0")

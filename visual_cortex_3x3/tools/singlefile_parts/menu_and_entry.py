@@ -160,7 +160,7 @@ def _menu_run_all() -> None:
     if not out:
         print("  결과 폴더를 반드시 입력해야 한다. 아무 것도 실행하지 않았다.")
         return
-    spec = _ask("설정 (내장 이름/경로, 쉼표로 여러 개, 'all' 이면 내장 전부)",
+    spec = _ask("설정 (내장 이름/경로, 쉼표로 여러 개, 'all' 또는 '*' 이면 전부)",
                 "minimal")
     stages = _ask("실행할 단계 (쉼표 구분, 비우면 전부)", "")
     limit = _ask("자극 수 제한 (0 이면 제한 없음)", "0")
