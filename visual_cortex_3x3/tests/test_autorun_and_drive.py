@@ -211,3 +211,43 @@ def test_stage_names_are_unique_and_ordered():
     assert ALL_STAGES[0] == "config_check"
     assert ALL_STAGES.index("validate") < ALL_STAGES.index("simulate")
     assert ALL_STAGES.index("simulate") < ALL_STAGES.index("report")
+
+
+# ----------------------------------------------------------------------
+# 출력 폴더 이름 (Windows OSError: [WinError 123] 회귀)
+# ----------------------------------------------------------------------
+@pytest.mark.parametrize("raw,expected", [
+    ("*", "unnamed"),
+    ("minimal", "minimal"),
+    ("configs/v1_small.json", "v1_small"),
+    ('a<b>c:d"e|f?g*h', "a_b_c_d_e_f_g_h"),
+    ("   ", "unnamed"),
+    ("CON", "CON_"),
+    ("trailing. ", "trailing"),
+])
+def test_safe_dir_name_strips_unusable_characters(raw, expected):
+    """Windows 에서 폴더 이름으로 쓸 수 없는 문자가 남으면 안 된다."""
+    from cortex.autorun import safe_dir_name
+
+    got = safe_dir_name(raw)
+    assert got == expected
+    assert not (set(got) & set('<>:"/\\|?*'))
+
+
+def test_run_all_does_not_create_dir_for_unreadable_config(tmp_path, project_root):
+    """설정을 읽지 못하는 이름으로 폴더를 먼저 만들지 않는다.
+
+    회귀: `--config *` 이면 `<출력폴더>/*` 를 mkdir 해서 Windows 가
+    `OSError: [WinError 123]` 을 낸다.
+    """
+    from cortex.autorun import run_everything
+
+    out = tmp_path / "test_val"
+    summary = run_everything(out, ["no?such:name"], package_root=project_root / "cortex",
+                             command="pytest", stages=["config_check"])
+    assert summary["all_stages_ok"] is False
+    entry = summary["results"]["no_such_name"]
+    assert "config_error" in entry
+    # 최상위 요약만 있고 설정별 폴더는 만들어지지 않는다.
+    assert sorted(p.name for p in out.iterdir()) == [
+        "SUMMARY_ko.md", "run_all.log", "summary.json"]
