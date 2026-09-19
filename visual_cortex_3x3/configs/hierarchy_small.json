@@ -1,0 +1,4968 @@
+{
+  "meta": {
+    "name": "hierarchy_small",
+    "description": "LGN 과 지정한 모든 피질 영역(V1,V2,V3,V4,IT)을 포함한 작은 연결망.",
+    "species_assumption": "primate_visual_cortex_model",
+    "notes": [
+      "기본 물체 인식 경로는 V1<->V2<->V4<->IT 이고, V2<->V3<->V4 경로는 설정으로 켤 수 있다.",
+      "모든 정보가 V1->V2->V3->V4->IT 한 사슬만 거친다고 가정하지 않는다.",
+      "영역별 뉴런 수·층 두께·연결 확률은 출처가 명시되지 않은 모형 파라미터다.",
+      "이 기능 배분은 연구용 작업 가설이다. 같은 영역이 여러 시각 특성에 관여할 수 있다."
+    ]
+  },
+  "seeds": {
+    "master": 20240303
+  },
+  "engine": {
+    "mode": "conductance_lif",
+    "dt_ms": 0.5,
+    "duration_ms": 250.0,
+    "min_delay_steps": 1,
+    "delay_rounding": "ceil",
+    "weight_application": "emit",
+    "reset_between_samples": {
+      "voltages": true,
+      "conductances": true,
+      "event_queue": true,
+      "traces": true,
+      "thresholds": false,
+      "weights": false,
+      "input_log": false
+    },
+    "sequence_mode": false
+  },
+  "cell_types": {
+    "retinal_ganglion": {
+      "dale": "excitatory",
+      "compartments": [
+        "soma"
+      ],
+      "C_pF": {
+        "soma": 80.0,
+        "basal": 100.0,
+        "apical": 100.0
+      },
+      "gL_nS": {
+        "soma": 6.0,
+        "basal": 5.0,
+        "apical": 5.0
+      },
+      "EL_mV": {
+        "soma": -65.0,
+        "basal": -70.0,
+        "apical": -70.0
+      },
+      "V_th_mV": -50.0,
+      "V_reset_mV": -62.0,
+      "t_ref_ms": 1.5,
+      "target_rate_hz": 10.0,
+      "sum_threshold_theta": 0.5
+    },
+    "lgn_relay": {
+      "dale": "excitatory",
+      "compartments": [
+        "soma"
+      ],
+      "C_pF": {
+        "soma": 100.0,
+        "basal": 100.0,
+        "apical": 100.0
+      },
+      "gL_nS": {
+        "soma": 7.0,
+        "basal": 5.0,
+        "apical": 5.0
+      },
+      "EL_mV": {
+        "soma": -68.0,
+        "basal": -70.0,
+        "apical": -70.0
+      },
+      "V_th_mV": -50.0,
+      "V_reset_mV": -63.0,
+      "t_ref_ms": 2.0,
+      "target_rate_hz": 8.0,
+      "sum_threshold_theta": 0.6
+    },
+    "spiny_stellate": {
+      "dale": "excitatory",
+      "compartments": [
+        "soma",
+        "basal"
+      ],
+      "C_pF": {
+        "soma": 150.0,
+        "basal": 90.0,
+        "apical": 90.0
+      },
+      "gL_nS": {
+        "soma": 8.0,
+        "basal": 5.0,
+        "apical": 5.0
+      },
+      "EL_mV": {
+        "soma": -70.0,
+        "basal": -70.0,
+        "apical": -70.0
+      },
+      "g_couple_nS": {
+        "soma_basal": 10.0,
+        "soma_apical": 0.0
+      },
+      "V_th_mV": -50.0,
+      "V_reset_mV": -65.0,
+      "t_ref_ms": 2.0,
+      "target_rate_hz": 5.0,
+      "sum_threshold_theta": 1.0
+    },
+    "pyramidal": {
+      "dale": "excitatory",
+      "compartments": [
+        "soma",
+        "basal",
+        "apical"
+      ],
+      "C_pF": {
+        "soma": 200.0,
+        "basal": 120.0,
+        "apical": 120.0
+      },
+      "gL_nS": {
+        "soma": 10.0,
+        "basal": 6.0,
+        "apical": 6.0
+      },
+      "EL_mV": {
+        "soma": -70.0,
+        "basal": -70.0,
+        "apical": -70.0
+      },
+      "g_couple_nS": {
+        "soma_basal": 9.0,
+        "soma_apical": 4.0
+      },
+      "V_th_mV": -50.0,
+      "V_reset_mV": -65.0,
+      "t_ref_ms": 2.5,
+      "target_rate_hz": 4.0,
+      "sum_threshold_theta": 1.0
+    },
+    "pv_basket": {
+      "dale": "inhibitory",
+      "compartments": [
+        "soma"
+      ],
+      "C_pF": {
+        "soma": 100.0,
+        "basal": 80.0,
+        "apical": 80.0
+      },
+      "gL_nS": {
+        "soma": 10.0,
+        "basal": 5.0,
+        "apical": 5.0
+      },
+      "EL_mV": {
+        "soma": -65.0,
+        "basal": -70.0,
+        "apical": -70.0
+      },
+      "V_th_mV": -48.0,
+      "V_reset_mV": -60.0,
+      "t_ref_ms": 1.0,
+      "target_rate_hz": 12.0,
+      "sum_threshold_theta": 0.8
+    },
+    "sst_martinotti": {
+      "dale": "inhibitory",
+      "compartments": [
+        "soma"
+      ],
+      "C_pF": {
+        "soma": 110.0,
+        "basal": 80.0,
+        "apical": 80.0
+      },
+      "gL_nS": {
+        "soma": 8.0,
+        "basal": 5.0,
+        "apical": 5.0
+      },
+      "EL_mV": {
+        "soma": -66.0,
+        "basal": -70.0,
+        "apical": -70.0
+      },
+      "V_th_mV": -50.0,
+      "V_reset_mV": -62.0,
+      "t_ref_ms": 2.0,
+      "target_rate_hz": 6.0,
+      "sum_threshold_theta": 0.9
+    },
+    "l1_inhibitory": {
+      "dale": "inhibitory",
+      "compartments": [
+        "soma"
+      ],
+      "C_pF": {
+        "soma": 90.0,
+        "basal": 80.0,
+        "apical": 80.0
+      },
+      "gL_nS": {
+        "soma": 8.0,
+        "basal": 5.0,
+        "apical": 5.0
+      },
+      "EL_mV": {
+        "soma": -66.0,
+        "basal": -70.0,
+        "apical": -70.0
+      },
+      "V_th_mV": -50.0,
+      "V_reset_mV": -62.0,
+      "t_ref_ms": 2.0,
+      "target_rate_hz": 5.0,
+      "sum_threshold_theta": 0.9
+    }
+  },
+  "retina": {
+    "image": {
+      "max_side_px": 96,
+      "fov_deg": 12.0,
+      "input_colorspace": "srgb"
+    },
+    "channels": {
+      "on_off_split": true,
+      "keep_lowpass_lms": true,
+      "lowpass_sigma_px": 8.0
+    },
+    "drive": {
+      "mode": "rate",
+      "max_rate_hz": 60.0,
+      "gain": 1.0,
+      "baseline_rate_hz": 0.5,
+      "current_per_hz_pA": 2.5,
+      "sum_mode_scale": 1.0
+    }
+  },
+  "retinotopy": {
+    "mapping": "log_polar",
+    "e0_deg": 0.5,
+    "n_radial": 4,
+    "n_angular": 8,
+    "fovea_patch": {
+      "enabled": true,
+      "radius_deg": 0.5,
+      "grid": 3
+    },
+    "sampling": {
+      "lowpass_before_sampling": true,
+      "sigma_scale": 0.5,
+      "min_sigma_px": 0.5,
+      "interpolation_order": 1
+    }
+  },
+  "v1": {
+    "n_orientations": 12,
+    "orientation_step_deg": 15.0,
+    "phases_rad": [
+      0.0,
+      -1.5707963267948966
+    ],
+    "pinwheel": {
+      "enabled": true,
+      "hypercolumn_mm": 0.8,
+      "n_pinwheels_per_mm2": 3.0
+    },
+    "ocular_dominance": {
+      "enabled": true,
+      "column_width_mm": 0.4,
+      "strength": 0.6
+    },
+    "gabor_init": {
+      "enabled": true,
+      "sigma_deg": 0.35,
+      "aspect": 1.6,
+      "cycles_per_deg": 1.5
+    },
+    "fixed_gabor_reference": {
+      "enabled": true,
+      "sigma_deg": 0.35,
+      "aspect": 1.6,
+      "cycles_per_deg": 1.5,
+      "energy_eps": 1e-06
+    }
+  },
+  "anatomy": {
+    "area_gap_mm": 1.0,
+    "jitter_mm": 0.02,
+    "areas": {
+      "Retina": {
+        "kind": "retina",
+        "surface_extent_mm": [
+          1.5,
+          1.5
+        ],
+        "neurons_per_layer": {
+          "L_input": 0
+        },
+        "cell_type_fractions": {
+          "L_input": {
+            "retinal_ganglion": 1.0
+          }
+        },
+        "visual_field": {
+          "max_ecc_deg": 5.0,
+          "rf_sigma_deg": 0.25,
+          "rf_sigma_growth_per_deg": 0.06
+        }
+      },
+      "LGN": {
+        "kind": "thalamus",
+        "surface_extent_mm": [
+          1.5,
+          1.5
+        ],
+        "neurons_per_layer": {
+          "L_relay": 72
+        },
+        "cell_type_fractions": {
+          "L_relay": {
+            "lgn_relay": 1.0
+          }
+        },
+        "visual_field": {
+          "max_ecc_deg": 5.0,
+          "rf_sigma_deg": 0.3,
+          "rf_sigma_growth_per_deg": 0.07
+        }
+      },
+      "V1": {
+        "kind": "cortex",
+        "hierarchy_level": 1.0,
+        "surface_extent_mm": [
+          2.0,
+          2.0
+        ],
+        "layer_thickness_mm": {
+          "L1": 0.1,
+          "L2": 0.22,
+          "L3": 0.33,
+          "L4": 0.3,
+          "L5": 0.38,
+          "L6": 0.37
+        },
+        "neurons_per_layer": {
+          "L1": 10,
+          "L2": 72,
+          "L3": 72,
+          "L4": 96,
+          "L5": 48,
+          "L6": 48
+        },
+        "cell_type_fractions": {
+          "L1": {
+            "l1_inhibitory": 1.0
+          },
+          "L2": {
+            "pyramidal": 0.72,
+            "pv_basket": 0.18,
+            "sst_martinotti": 0.1
+          },
+          "L3": {
+            "pyramidal": 0.72,
+            "pv_basket": 0.18,
+            "sst_martinotti": 0.1
+          },
+          "L4": {
+            "spiny_stellate": 0.72,
+            "pv_basket": 0.2,
+            "sst_martinotti": 0.08
+          },
+          "L5": {
+            "pyramidal": 0.82,
+            "pv_basket": 0.18
+          },
+          "L6": {
+            "pyramidal": 0.82,
+            "pv_basket": 0.18
+          }
+        },
+        "visual_field": {
+          "max_ecc_deg": 5.0,
+          "rf_sigma_deg": 0.35,
+          "rf_sigma_growth_per_deg": 0.08
+        },
+        "notes": "국소 수용장, 방향/위상 채널"
+      },
+      "V2": {
+        "kind": "cortex",
+        "hierarchy_level": 2.0,
+        "surface_extent_mm": [
+          1.8,
+          1.8
+        ],
+        "layer_thickness_mm": {
+          "L1": 0.1,
+          "L2": 0.22,
+          "L3": 0.33,
+          "L4": 0.3,
+          "L5": 0.38,
+          "L6": 0.37
+        },
+        "neurons_per_layer": {
+          "L1": 8,
+          "L2": 48,
+          "L3": 48,
+          "L4": 64,
+          "L5": 32,
+          "L6": 32
+        },
+        "cell_type_fractions": {
+          "L1": {
+            "l1_inhibitory": 1.0
+          },
+          "L2": {
+            "pyramidal": 0.72,
+            "pv_basket": 0.18,
+            "sst_martinotti": 0.1
+          },
+          "L3": {
+            "pyramidal": 0.72,
+            "pv_basket": 0.18,
+            "sst_martinotti": 0.1
+          },
+          "L4": {
+            "spiny_stellate": 0.72,
+            "pv_basket": 0.2,
+            "sst_martinotti": 0.08
+          },
+          "L5": {
+            "pyramidal": 0.82,
+            "pv_basket": 0.18
+          },
+          "L6": {
+            "pyramidal": 0.82,
+            "pv_basket": 0.18
+          }
+        },
+        "visual_field": {
+          "max_ecc_deg": 5.0,
+          "rf_sigma_deg": 0.7,
+          "rf_sigma_growth_per_deg": 0.14
+        },
+        "notes": "더 넓은 범위의 방향/위상 반응 통합과 재귀 상호작용"
+      },
+      "V3": {
+        "kind": "cortex",
+        "hierarchy_level": 3.0,
+        "surface_extent_mm": [
+          1.6,
+          1.6
+        ],
+        "layer_thickness_mm": {
+          "L1": 0.1,
+          "L2": 0.22,
+          "L3": 0.33,
+          "L4": 0.3,
+          "L5": 0.38,
+          "L6": 0.37
+        },
+        "neurons_per_layer": {
+          "L1": 8,
+          "L2": 48,
+          "L3": 48,
+          "L4": 64,
+          "L5": 32,
+          "L6": 32
+        },
+        "cell_type_fractions": {
+          "L1": {
+            "l1_inhibitory": 1.0
+          },
+          "L2": {
+            "pyramidal": 0.72,
+            "pv_basket": 0.18,
+            "sst_martinotti": 0.1
+          },
+          "L3": {
+            "pyramidal": 0.72,
+            "pv_basket": 0.18,
+            "sst_martinotti": 0.1
+          },
+          "L4": {
+            "spiny_stellate": 0.72,
+            "pv_basket": 0.2,
+            "sst_martinotti": 0.08
+          },
+          "L5": {
+            "pyramidal": 0.82,
+            "pv_basket": 0.18
+          },
+          "L6": {
+            "pyramidal": 0.82,
+            "pv_basket": 0.18
+          }
+        },
+        "visual_field": {
+          "max_ecc_deg": 5.0,
+          "rf_sigma_deg": 1.0,
+          "rf_sigma_growth_per_deg": 0.18
+        },
+        "notes": "공간 통합. 운동 기능 평가에는 프레임 시퀀스가 필요하다."
+      },
+      "V4": {
+        "kind": "cortex",
+        "hierarchy_level": 4.0,
+        "surface_extent_mm": [
+          1.6,
+          1.6
+        ],
+        "layer_thickness_mm": {
+          "L1": 0.1,
+          "L2": 0.22,
+          "L3": 0.33,
+          "L4": 0.3,
+          "L5": 0.38,
+          "L6": 0.37
+        },
+        "neurons_per_layer": {
+          "L1": 8,
+          "L2": 48,
+          "L3": 48,
+          "L4": 64,
+          "L5": 32,
+          "L6": 32
+        },
+        "cell_type_fractions": {
+          "L1": {
+            "l1_inhibitory": 1.0
+          },
+          "L2": {
+            "pyramidal": 0.72,
+            "pv_basket": 0.18,
+            "sst_martinotti": 0.1
+          },
+          "L3": {
+            "pyramidal": 0.72,
+            "pv_basket": 0.18,
+            "sst_martinotti": 0.1
+          },
+          "L4": {
+            "spiny_stellate": 0.72,
+            "pv_basket": 0.2,
+            "sst_martinotti": 0.08
+          },
+          "L5": {
+            "pyramidal": 0.82,
+            "pv_basket": 0.18
+          },
+          "L6": {
+            "pyramidal": 0.82,
+            "pv_basket": 0.18
+          }
+        },
+        "visual_field": {
+          "max_ecc_deg": 5.0,
+          "rf_sigma_deg": 1.4,
+          "rf_sigma_growth_per_deg": 0.22
+        },
+        "notes": "저주파 색 정보와 형태 정보가 합류하는 지점, 넓어진 수용장"
+      },
+      "IT": {
+        "kind": "cortex",
+        "hierarchy_level": 5.0,
+        "surface_extent_mm": [
+          1.4,
+          1.4
+        ],
+        "layer_thickness_mm": {
+          "L1": 0.1,
+          "L2": 0.22,
+          "L3": 0.33,
+          "L4": 0.3,
+          "L5": 0.38,
+          "L6": 0.37
+        },
+        "neurons_per_layer": {
+          "L1": 8,
+          "L2": 48,
+          "L3": 48,
+          "L4": 64,
+          "L5": 32,
+          "L6": 32
+        },
+        "cell_type_fractions": {
+          "L1": {
+            "l1_inhibitory": 1.0
+          },
+          "L2": {
+            "pyramidal": 0.72,
+            "pv_basket": 0.18,
+            "sst_martinotti": 0.1
+          },
+          "L3": {
+            "pyramidal": 0.72,
+            "pv_basket": 0.18,
+            "sst_martinotti": 0.1
+          },
+          "L4": {
+            "spiny_stellate": 0.72,
+            "pv_basket": 0.2,
+            "sst_martinotti": 0.08
+          },
+          "L5": {
+            "pyramidal": 0.82,
+            "pv_basket": 0.18
+          },
+          "L6": {
+            "pyramidal": 0.82,
+            "pv_basket": 0.18
+          }
+        },
+        "visual_field": {
+          "max_ecc_deg": 5.0,
+          "rf_sigma_deg": 2.2,
+          "rf_sigma_growth_per_deg": 0.3
+        },
+        "notes": "집단 활동을 특징 벡터로 제공한다. 한 뉴런이 곧 카테고리 의미가 아니다."
+      }
+    }
+  },
+  "wiring": {
+    "max_total_synapses": 2000000,
+    "rules": [
+      {
+        "name": "Retina->LGN",
+        "enabled": true,
+        "src": {
+          "area": "Retina",
+          "layer": [
+            "L_input"
+          ],
+          "cell_type": []
+        },
+        "dst": {
+          "area": "LGN",
+          "layer": [
+            "L_relay"
+          ],
+          "cell_type": []
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 6,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 0.6,
+        "probability": 0.8,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.4,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 1.0,
+        "synaptic_delay_ms": 1.0,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "LGN->V1_L4",
+        "enabled": true,
+        "src": {
+          "area": "LGN",
+          "layer": [
+            "L_relay"
+          ],
+          "cell_type": []
+        },
+        "dst": {
+          "area": "V1",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "spiny_stellate"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 12,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 0.7,
+        "probability": 0.6,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.2,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 1.2,
+        "plasticity_rule": "stdp",
+        "gabor_initialized": true,
+        "note": "Gabor 모양 초기 배선 (학습된 선택성이 아니다)"
+      },
+      {
+        "name": "LGN->V1_L4_PV",
+        "enabled": true,
+        "src": {
+          "area": "LGN",
+          "layer": [
+            "L_relay"
+          ],
+          "cell_type": []
+        },
+        "dst": {
+          "area": "V1",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "pv_basket"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 8,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 0.8,
+        "probability": 0.4,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.0,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 1.1,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "LGN->V1_L6",
+        "enabled": true,
+        "src": {
+          "area": "LGN",
+          "layer": [
+            "L_relay"
+          ],
+          "cell_type": []
+        },
+        "dst": {
+          "area": "V1",
+          "layer": [
+            "L6"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 4,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 1.0,
+        "probability": 0.25,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.5,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 1.4,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "V1_L4->L2L3",
+        "src": {
+          "area": "V1",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "spiny_stellate"
+          ]
+        },
+        "dst": {
+          "area": "V1",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 8,
+        "radius_mm": 0.45,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.5,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.1,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.8,
+        "plasticity_rule": "stdp",
+        "gabor_initialized": false,
+        "note": "L4 -> L2/3 상행"
+      },
+      {
+        "name": "V1_L4->L4_PV",
+        "src": {
+          "area": "V1",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "spiny_stellate"
+          ]
+        },
+        "dst": {
+          "area": "V1",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "pv_basket"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 6,
+        "radius_mm": 0.35,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.55,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.0,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.6,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "V1_L4_PV->L4",
+        "src": {
+          "area": "V1",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "pv_basket"
+          ]
+        },
+        "dst": {
+          "area": "V1",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "spiny_stellate"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "GABA_A",
+        "rule": "local_radius",
+        "k": 6,
+        "radius_mm": 0.35,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.65,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.4,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.5,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "PV 는 soma 표적 억제"
+      },
+      {
+        "name": "V1_L2L3_lateral",
+        "src": {
+          "area": "V1",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V1",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 6,
+        "radius_mm": 0.6,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.3,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.7,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.15,
+        "synaptic_delay_ms": 1.4,
+        "plasticity_rule": "stdp",
+        "gabor_initialized": false,
+        "note": "수평 재귀 연결"
+      },
+      {
+        "name": "V1_L2L3->PV",
+        "src": {
+          "area": "V1",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V1",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pv_basket"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 5,
+        "radius_mm": 0.5,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.5,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.9,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.6,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "V1_PV->L2L3",
+        "src": {
+          "area": "V1",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pv_basket"
+          ]
+        },
+        "dst": {
+          "area": "V1",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "GABA_A",
+        "rule": "local_radius",
+        "k": 6,
+        "radius_mm": 0.5,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.6,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.5,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.5,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "V1_L2L3->SST",
+        "src": {
+          "area": "V1",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V1",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "sst_martinotti"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 4,
+        "radius_mm": 0.5,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.4,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.7,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.7,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "V1_SST->apical",
+        "src": {
+          "area": "V1",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "sst_martinotti"
+          ]
+        },
+        "dst": {
+          "area": "V1",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "apical",
+        "receptor": "GABA_A",
+        "rule": "local_radius",
+        "k": 5,
+        "radius_mm": 0.7,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.5,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.0,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.15,
+        "synaptic_delay_ms": 0.8,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "SST 는 첨단수상돌기(apical) 표적 억제"
+      },
+      {
+        "name": "V1_L2L3->L5",
+        "src": {
+          "area": "V1",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V1",
+          "layer": [
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 5,
+        "radius_mm": 0.6,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.45,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.9,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.9,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "V1_L5->L6",
+        "src": {
+          "area": "V1",
+          "layer": [
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V1",
+          "layer": [
+            "L6"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 4,
+        "radius_mm": 0.6,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.45,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.8,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.9,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "V1_L6->L4",
+        "src": {
+          "area": "V1",
+          "layer": [
+            "L6"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V1",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "spiny_stellate"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 4,
+        "radius_mm": 0.6,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.35,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.5,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 1.1,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "층내 피드백 (L6 -> L4)"
+      },
+      {
+        "name": "V1_L5->L1_inh",
+        "src": {
+          "area": "V1",
+          "layer": [
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V1",
+          "layer": [
+            "L1"
+          ],
+          "cell_type": [
+            "l1_inhibitory"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 3,
+        "radius_mm": 0.9,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.45,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.7,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 1.0,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "L1 은 세포체 밀도가 낮지만 비어 있지 않다"
+      },
+      {
+        "name": "V1_L1_inh->apical",
+        "src": {
+          "area": "V1",
+          "layer": [
+            "L1"
+          ],
+          "cell_type": [
+            "l1_inhibitory"
+          ]
+        },
+        "dst": {
+          "area": "V1",
+          "layer": [
+            "L2",
+            "L3",
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "apical",
+        "receptor": "GABA_A",
+        "rule": "local_radius",
+        "k": 6,
+        "radius_mm": 0.9,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.5,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.9,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.15,
+        "synaptic_delay_ms": 0.8,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "L1 억제 -> 피라미드 apical 구획"
+      },
+      {
+        "name": "V2_L4->L2L3",
+        "src": {
+          "area": "V2",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "spiny_stellate"
+          ]
+        },
+        "dst": {
+          "area": "V2",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 8,
+        "radius_mm": 0.45,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.5,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.1,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.8,
+        "plasticity_rule": "stdp",
+        "gabor_initialized": false,
+        "note": "L4 -> L2/3 상행"
+      },
+      {
+        "name": "V2_L4->L4_PV",
+        "src": {
+          "area": "V2",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "spiny_stellate"
+          ]
+        },
+        "dst": {
+          "area": "V2",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "pv_basket"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 6,
+        "radius_mm": 0.35,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.55,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.0,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.6,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "V2_L4_PV->L4",
+        "src": {
+          "area": "V2",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "pv_basket"
+          ]
+        },
+        "dst": {
+          "area": "V2",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "spiny_stellate"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "GABA_A",
+        "rule": "local_radius",
+        "k": 6,
+        "radius_mm": 0.35,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.65,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.4,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.5,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "PV 는 soma 표적 억제"
+      },
+      {
+        "name": "V2_L2L3_lateral",
+        "src": {
+          "area": "V2",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V2",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 6,
+        "radius_mm": 0.6,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.3,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.7,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.15,
+        "synaptic_delay_ms": 1.4,
+        "plasticity_rule": "stdp",
+        "gabor_initialized": false,
+        "note": "수평 재귀 연결"
+      },
+      {
+        "name": "V2_L2L3->PV",
+        "src": {
+          "area": "V2",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V2",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pv_basket"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 5,
+        "radius_mm": 0.5,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.5,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.9,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.6,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "V2_PV->L2L3",
+        "src": {
+          "area": "V2",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pv_basket"
+          ]
+        },
+        "dst": {
+          "area": "V2",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "GABA_A",
+        "rule": "local_radius",
+        "k": 6,
+        "radius_mm": 0.5,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.6,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.5,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.5,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "V2_L2L3->SST",
+        "src": {
+          "area": "V2",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V2",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "sst_martinotti"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 4,
+        "radius_mm": 0.5,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.4,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.7,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.7,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "V2_SST->apical",
+        "src": {
+          "area": "V2",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "sst_martinotti"
+          ]
+        },
+        "dst": {
+          "area": "V2",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "apical",
+        "receptor": "GABA_A",
+        "rule": "local_radius",
+        "k": 5,
+        "radius_mm": 0.7,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.5,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.0,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.15,
+        "synaptic_delay_ms": 0.8,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "SST 는 첨단수상돌기(apical) 표적 억제"
+      },
+      {
+        "name": "V2_L2L3->L5",
+        "src": {
+          "area": "V2",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V2",
+          "layer": [
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 5,
+        "radius_mm": 0.6,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.45,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.9,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.9,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "V2_L5->L6",
+        "src": {
+          "area": "V2",
+          "layer": [
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V2",
+          "layer": [
+            "L6"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 4,
+        "radius_mm": 0.6,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.45,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.8,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.9,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "V2_L6->L4",
+        "src": {
+          "area": "V2",
+          "layer": [
+            "L6"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V2",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "spiny_stellate"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 4,
+        "radius_mm": 0.6,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.35,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.5,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 1.1,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "층내 피드백 (L6 -> L4)"
+      },
+      {
+        "name": "V2_L5->L1_inh",
+        "src": {
+          "area": "V2",
+          "layer": [
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V2",
+          "layer": [
+            "L1"
+          ],
+          "cell_type": [
+            "l1_inhibitory"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 3,
+        "radius_mm": 0.9,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.45,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.7,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 1.0,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "L1 은 세포체 밀도가 낮지만 비어 있지 않다"
+      },
+      {
+        "name": "V2_L1_inh->apical",
+        "src": {
+          "area": "V2",
+          "layer": [
+            "L1"
+          ],
+          "cell_type": [
+            "l1_inhibitory"
+          ]
+        },
+        "dst": {
+          "area": "V2",
+          "layer": [
+            "L2",
+            "L3",
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "apical",
+        "receptor": "GABA_A",
+        "rule": "local_radius",
+        "k": 6,
+        "radius_mm": 0.9,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.5,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.9,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.15,
+        "synaptic_delay_ms": 0.8,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "L1 억제 -> 피라미드 apical 구획"
+      },
+      {
+        "name": "V3_L4->L2L3",
+        "src": {
+          "area": "V3",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "spiny_stellate"
+          ]
+        },
+        "dst": {
+          "area": "V3",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 8,
+        "radius_mm": 0.45,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.5,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.1,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.8,
+        "plasticity_rule": "stdp",
+        "gabor_initialized": false,
+        "note": "L4 -> L2/3 상행"
+      },
+      {
+        "name": "V3_L4->L4_PV",
+        "src": {
+          "area": "V3",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "spiny_stellate"
+          ]
+        },
+        "dst": {
+          "area": "V3",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "pv_basket"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 6,
+        "radius_mm": 0.35,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.55,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.0,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.6,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "V3_L4_PV->L4",
+        "src": {
+          "area": "V3",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "pv_basket"
+          ]
+        },
+        "dst": {
+          "area": "V3",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "spiny_stellate"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "GABA_A",
+        "rule": "local_radius",
+        "k": 6,
+        "radius_mm": 0.35,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.65,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.4,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.5,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "PV 는 soma 표적 억제"
+      },
+      {
+        "name": "V3_L2L3_lateral",
+        "src": {
+          "area": "V3",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V3",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 6,
+        "radius_mm": 0.6,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.3,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.7,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.15,
+        "synaptic_delay_ms": 1.4,
+        "plasticity_rule": "stdp",
+        "gabor_initialized": false,
+        "note": "수평 재귀 연결"
+      },
+      {
+        "name": "V3_L2L3->PV",
+        "src": {
+          "area": "V3",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V3",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pv_basket"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 5,
+        "radius_mm": 0.5,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.5,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.9,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.6,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "V3_PV->L2L3",
+        "src": {
+          "area": "V3",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pv_basket"
+          ]
+        },
+        "dst": {
+          "area": "V3",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "GABA_A",
+        "rule": "local_radius",
+        "k": 6,
+        "radius_mm": 0.5,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.6,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.5,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.5,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "V3_L2L3->SST",
+        "src": {
+          "area": "V3",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V3",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "sst_martinotti"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 4,
+        "radius_mm": 0.5,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.4,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.7,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.7,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "V3_SST->apical",
+        "src": {
+          "area": "V3",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "sst_martinotti"
+          ]
+        },
+        "dst": {
+          "area": "V3",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "apical",
+        "receptor": "GABA_A",
+        "rule": "local_radius",
+        "k": 5,
+        "radius_mm": 0.7,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.5,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.0,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.15,
+        "synaptic_delay_ms": 0.8,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "SST 는 첨단수상돌기(apical) 표적 억제"
+      },
+      {
+        "name": "V3_L2L3->L5",
+        "src": {
+          "area": "V3",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V3",
+          "layer": [
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 5,
+        "radius_mm": 0.6,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.45,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.9,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.9,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "V3_L5->L6",
+        "src": {
+          "area": "V3",
+          "layer": [
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V3",
+          "layer": [
+            "L6"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 4,
+        "radius_mm": 0.6,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.45,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.8,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.9,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "V3_L6->L4",
+        "src": {
+          "area": "V3",
+          "layer": [
+            "L6"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V3",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "spiny_stellate"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 4,
+        "radius_mm": 0.6,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.35,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.5,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 1.1,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "층내 피드백 (L6 -> L4)"
+      },
+      {
+        "name": "V3_L5->L1_inh",
+        "src": {
+          "area": "V3",
+          "layer": [
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V3",
+          "layer": [
+            "L1"
+          ],
+          "cell_type": [
+            "l1_inhibitory"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 3,
+        "radius_mm": 0.9,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.45,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.7,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 1.0,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "L1 은 세포체 밀도가 낮지만 비어 있지 않다"
+      },
+      {
+        "name": "V3_L1_inh->apical",
+        "src": {
+          "area": "V3",
+          "layer": [
+            "L1"
+          ],
+          "cell_type": [
+            "l1_inhibitory"
+          ]
+        },
+        "dst": {
+          "area": "V3",
+          "layer": [
+            "L2",
+            "L3",
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "apical",
+        "receptor": "GABA_A",
+        "rule": "local_radius",
+        "k": 6,
+        "radius_mm": 0.9,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.5,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.9,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.15,
+        "synaptic_delay_ms": 0.8,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "L1 억제 -> 피라미드 apical 구획"
+      },
+      {
+        "name": "V4_L4->L2L3",
+        "src": {
+          "area": "V4",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "spiny_stellate"
+          ]
+        },
+        "dst": {
+          "area": "V4",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 8,
+        "radius_mm": 0.45,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.5,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.1,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.8,
+        "plasticity_rule": "stdp",
+        "gabor_initialized": false,
+        "note": "L4 -> L2/3 상행"
+      },
+      {
+        "name": "V4_L4->L4_PV",
+        "src": {
+          "area": "V4",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "spiny_stellate"
+          ]
+        },
+        "dst": {
+          "area": "V4",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "pv_basket"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 6,
+        "radius_mm": 0.35,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.55,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.0,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.6,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "V4_L4_PV->L4",
+        "src": {
+          "area": "V4",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "pv_basket"
+          ]
+        },
+        "dst": {
+          "area": "V4",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "spiny_stellate"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "GABA_A",
+        "rule": "local_radius",
+        "k": 6,
+        "radius_mm": 0.35,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.65,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.4,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.5,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "PV 는 soma 표적 억제"
+      },
+      {
+        "name": "V4_L2L3_lateral",
+        "src": {
+          "area": "V4",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V4",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 6,
+        "radius_mm": 0.6,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.3,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.7,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.15,
+        "synaptic_delay_ms": 1.4,
+        "plasticity_rule": "stdp",
+        "gabor_initialized": false,
+        "note": "수평 재귀 연결"
+      },
+      {
+        "name": "V4_L2L3->PV",
+        "src": {
+          "area": "V4",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V4",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pv_basket"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 5,
+        "radius_mm": 0.5,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.5,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.9,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.6,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "V4_PV->L2L3",
+        "src": {
+          "area": "V4",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pv_basket"
+          ]
+        },
+        "dst": {
+          "area": "V4",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "GABA_A",
+        "rule": "local_radius",
+        "k": 6,
+        "radius_mm": 0.5,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.6,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.5,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.5,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "V4_L2L3->SST",
+        "src": {
+          "area": "V4",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V4",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "sst_martinotti"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 4,
+        "radius_mm": 0.5,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.4,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.7,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.7,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "V4_SST->apical",
+        "src": {
+          "area": "V4",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "sst_martinotti"
+          ]
+        },
+        "dst": {
+          "area": "V4",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "apical",
+        "receptor": "GABA_A",
+        "rule": "local_radius",
+        "k": 5,
+        "radius_mm": 0.7,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.5,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.0,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.15,
+        "synaptic_delay_ms": 0.8,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "SST 는 첨단수상돌기(apical) 표적 억제"
+      },
+      {
+        "name": "V4_L2L3->L5",
+        "src": {
+          "area": "V4",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V4",
+          "layer": [
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 5,
+        "radius_mm": 0.6,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.45,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.9,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.9,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "V4_L5->L6",
+        "src": {
+          "area": "V4",
+          "layer": [
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V4",
+          "layer": [
+            "L6"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 4,
+        "radius_mm": 0.6,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.45,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.8,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.9,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "V4_L6->L4",
+        "src": {
+          "area": "V4",
+          "layer": [
+            "L6"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V4",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "spiny_stellate"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 4,
+        "radius_mm": 0.6,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.35,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.5,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 1.1,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "층내 피드백 (L6 -> L4)"
+      },
+      {
+        "name": "V4_L5->L1_inh",
+        "src": {
+          "area": "V4",
+          "layer": [
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V4",
+          "layer": [
+            "L1"
+          ],
+          "cell_type": [
+            "l1_inhibitory"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 3,
+        "radius_mm": 0.9,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.45,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.7,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 1.0,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "L1 은 세포체 밀도가 낮지만 비어 있지 않다"
+      },
+      {
+        "name": "V4_L1_inh->apical",
+        "src": {
+          "area": "V4",
+          "layer": [
+            "L1"
+          ],
+          "cell_type": [
+            "l1_inhibitory"
+          ]
+        },
+        "dst": {
+          "area": "V4",
+          "layer": [
+            "L2",
+            "L3",
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "apical",
+        "receptor": "GABA_A",
+        "rule": "local_radius",
+        "k": 6,
+        "radius_mm": 0.9,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.5,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.9,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.15,
+        "synaptic_delay_ms": 0.8,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "L1 억제 -> 피라미드 apical 구획"
+      },
+      {
+        "name": "IT_L4->L2L3",
+        "src": {
+          "area": "IT",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "spiny_stellate"
+          ]
+        },
+        "dst": {
+          "area": "IT",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 8,
+        "radius_mm": 0.45,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.5,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.1,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.8,
+        "plasticity_rule": "stdp",
+        "gabor_initialized": false,
+        "note": "L4 -> L2/3 상행"
+      },
+      {
+        "name": "IT_L4->L4_PV",
+        "src": {
+          "area": "IT",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "spiny_stellate"
+          ]
+        },
+        "dst": {
+          "area": "IT",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "pv_basket"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 6,
+        "radius_mm": 0.35,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.55,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.0,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.6,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "IT_L4_PV->L4",
+        "src": {
+          "area": "IT",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "pv_basket"
+          ]
+        },
+        "dst": {
+          "area": "IT",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "spiny_stellate"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "GABA_A",
+        "rule": "local_radius",
+        "k": 6,
+        "radius_mm": 0.35,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.65,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.4,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.5,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "PV 는 soma 표적 억제"
+      },
+      {
+        "name": "IT_L2L3_lateral",
+        "src": {
+          "area": "IT",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "IT",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 6,
+        "radius_mm": 0.6,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.3,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.7,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.15,
+        "synaptic_delay_ms": 1.4,
+        "plasticity_rule": "stdp",
+        "gabor_initialized": false,
+        "note": "수평 재귀 연결"
+      },
+      {
+        "name": "IT_L2L3->PV",
+        "src": {
+          "area": "IT",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "IT",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pv_basket"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 5,
+        "radius_mm": 0.5,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.5,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.9,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.6,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "IT_PV->L2L3",
+        "src": {
+          "area": "IT",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pv_basket"
+          ]
+        },
+        "dst": {
+          "area": "IT",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "GABA_A",
+        "rule": "local_radius",
+        "k": 6,
+        "radius_mm": 0.5,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.6,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.5,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.5,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "IT_L2L3->SST",
+        "src": {
+          "area": "IT",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "IT",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "sst_martinotti"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 4,
+        "radius_mm": 0.5,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.4,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.7,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.7,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "IT_SST->apical",
+        "src": {
+          "area": "IT",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "sst_martinotti"
+          ]
+        },
+        "dst": {
+          "area": "IT",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "apical",
+        "receptor": "GABA_A",
+        "rule": "local_radius",
+        "k": 5,
+        "radius_mm": 0.7,
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.5,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.0,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.15,
+        "synaptic_delay_ms": 0.8,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "SST 는 첨단수상돌기(apical) 표적 억제"
+      },
+      {
+        "name": "IT_L2L3->L5",
+        "src": {
+          "area": "IT",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "IT",
+          "layer": [
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 5,
+        "radius_mm": 0.6,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.45,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.9,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.9,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "IT_L5->L6",
+        "src": {
+          "area": "IT",
+          "layer": [
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "IT",
+          "layer": [
+            "L6"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 4,
+        "radius_mm": 0.6,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.45,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.8,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 0.9,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      },
+      {
+        "name": "IT_L6->L4",
+        "src": {
+          "area": "IT",
+          "layer": [
+            "L6"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "IT",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "spiny_stellate"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 4,
+        "radius_mm": 0.6,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.35,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.5,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 1.1,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "층내 피드백 (L6 -> L4)"
+      },
+      {
+        "name": "IT_L5->L1_inh",
+        "src": {
+          "area": "IT",
+          "layer": [
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "IT",
+          "layer": [
+            "L1"
+          ],
+          "cell_type": [
+            "l1_inhibitory"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "local_radius",
+        "k": 3,
+        "radius_mm": 0.9,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.45,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.7,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.2,
+        "synaptic_delay_ms": 1.0,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "L1 은 세포체 밀도가 낮지만 비어 있지 않다"
+      },
+      {
+        "name": "IT_L1_inh->apical",
+        "src": {
+          "area": "IT",
+          "layer": [
+            "L1"
+          ],
+          "cell_type": [
+            "l1_inhibitory"
+          ]
+        },
+        "dst": {
+          "area": "IT",
+          "layer": [
+            "L2",
+            "L3",
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "apical",
+        "receptor": "GABA_A",
+        "rule": "local_radius",
+        "k": 6,
+        "radius_mm": 0.9,
+        "radius_space": "surface",
+        "rf_match_sigma_deg": 0.5,
+        "probability": 0.5,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.9,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.15,
+        "synaptic_delay_ms": 0.8,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "L1 억제 -> 피라미드 apical 구획"
+      },
+      {
+        "name": "V1->V2_FF_main",
+        "enabled": true,
+        "src": {
+          "area": "V1",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V2",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "spiny_stellate"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 10,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 0.9,
+        "probability": 0.35,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.0,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 2.0,
+        "plasticity_rule": "stdp",
+        "gabor_initialized": false,
+        "note": "상향은 주로 상부층(L2/3) 기원, 중간층(L4) 표적이라는 집단 수준 경향을 쓴다. 개별 시냅스의 완전한 목록이 아니며 기원/종말층 혼합을 허용한다 (Markov 등, Anatomy of hierarchy)."
+      },
+      {
+        "name": "V1->V2_FF_mixed",
+        "enabled": true,
+        "src": {
+          "area": "V1",
+          "layer": [
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V2",
+          "layer": [
+            "L4",
+            "L3"
+          ],
+          "cell_type": [
+            "spiny_stellate",
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 5,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 1.08,
+        "probability": 0.13999999999999999,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.5,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 2.2,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "기원/종말층 혼합을 허용하는 소수 경로."
+      },
+      {
+        "name": "V1->V2_FF_inh",
+        "enabled": true,
+        "src": {
+          "area": "V1",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V2",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "pv_basket"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 6,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 0.9,
+        "probability": 0.21,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.8,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 2.0,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "상향 경로에 딸린 전방향 억제."
+      },
+      {
+        "name": "V2->V4_FF_main",
+        "enabled": true,
+        "src": {
+          "area": "V2",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V4",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "spiny_stellate"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 10,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 1.4,
+        "probability": 0.35,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.0,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 2.4,
+        "plasticity_rule": "stdp",
+        "gabor_initialized": false,
+        "note": "상향은 주로 상부층(L2/3) 기원, 중간층(L4) 표적이라는 집단 수준 경향을 쓴다. 개별 시냅스의 완전한 목록이 아니며 기원/종말층 혼합을 허용한다 (Markov 등, Anatomy of hierarchy)."
+      },
+      {
+        "name": "V2->V4_FF_mixed",
+        "enabled": true,
+        "src": {
+          "area": "V2",
+          "layer": [
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V4",
+          "layer": [
+            "L4",
+            "L3"
+          ],
+          "cell_type": [
+            "spiny_stellate",
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 5,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 1.68,
+        "probability": 0.13999999999999999,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.5,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 2.64,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "기원/종말층 혼합을 허용하는 소수 경로."
+      },
+      {
+        "name": "V2->V4_FF_inh",
+        "enabled": true,
+        "src": {
+          "area": "V2",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V4",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "pv_basket"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 6,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 1.4,
+        "probability": 0.21,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.8,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 2.4,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "상향 경로에 딸린 전방향 억제."
+      },
+      {
+        "name": "V4->IT_FF_main",
+        "enabled": true,
+        "src": {
+          "area": "V4",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "IT",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "spiny_stellate"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 10,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 2.2,
+        "probability": 0.35,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.0,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 2.8,
+        "plasticity_rule": "stdp",
+        "gabor_initialized": false,
+        "note": "상향은 주로 상부층(L2/3) 기원, 중간층(L4) 표적이라는 집단 수준 경향을 쓴다. 개별 시냅스의 완전한 목록이 아니며 기원/종말층 혼합을 허용한다 (Markov 등, Anatomy of hierarchy)."
+      },
+      {
+        "name": "V4->IT_FF_mixed",
+        "enabled": true,
+        "src": {
+          "area": "V4",
+          "layer": [
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "IT",
+          "layer": [
+            "L4",
+            "L3"
+          ],
+          "cell_type": [
+            "spiny_stellate",
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 5,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 2.64,
+        "probability": 0.13999999999999999,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.5,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 3.08,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "기원/종말층 혼합을 허용하는 소수 경로."
+      },
+      {
+        "name": "V4->IT_FF_inh",
+        "enabled": true,
+        "src": {
+          "area": "V4",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "IT",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "pv_basket"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 6,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 2.2,
+        "probability": 0.21,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.8,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 2.8,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "상향 경로에 딸린 전방향 억제."
+      },
+      {
+        "name": "V2->V1_FB_apical",
+        "enabled": true,
+        "src": {
+          "area": "V2",
+          "layer": [
+            "L5",
+            "L6"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V1",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "apical",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 8,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 1.2,
+        "probability": 0.25,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.5,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 3.0,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "하향은 L4 밖(주로 L1/apical, L5)을 표적으로 한다. 같은 근거의 집단 수준 경향이며 예외를 금지하는 규칙이 아니다."
+      },
+      {
+        "name": "V2->V1_FB_L1",
+        "enabled": true,
+        "src": {
+          "area": "V2",
+          "layer": [
+            "L5",
+            "L6"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V1",
+          "layer": [
+            "L1"
+          ],
+          "cell_type": [
+            "l1_inhibitory"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 4,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 1.44,
+        "probability": 0.15,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.4,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 3.0,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "L1 억제 뉴런을 경유하는 하향 경로."
+      },
+      {
+        "name": "V2->V1_FB_L5",
+        "enabled": true,
+        "src": {
+          "area": "V2",
+          "layer": [
+            "L5",
+            "L6"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V1",
+          "layer": [
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 4,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 1.44,
+        "probability": 0.15,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.35,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 3.3000000000000003,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "하향은 L4 밖(주로 L1/apical, L5)을 표적으로 한다. 같은 근거의 집단 수준 경향이며 예외를 금지하는 규칙이 아니다."
+      },
+      {
+        "name": "V4->V2_FB_apical",
+        "enabled": true,
+        "src": {
+          "area": "V4",
+          "layer": [
+            "L5",
+            "L6"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V2",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "apical",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 8,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 1.8,
+        "probability": 0.25,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.5,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 3.4,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "하향은 L4 밖(주로 L1/apical, L5)을 표적으로 한다. 같은 근거의 집단 수준 경향이며 예외를 금지하는 규칙이 아니다."
+      },
+      {
+        "name": "V4->V2_FB_L1",
+        "enabled": true,
+        "src": {
+          "area": "V4",
+          "layer": [
+            "L5",
+            "L6"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V2",
+          "layer": [
+            "L1"
+          ],
+          "cell_type": [
+            "l1_inhibitory"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 4,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 2.16,
+        "probability": 0.15,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.4,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 3.4,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "L1 억제 뉴런을 경유하는 하향 경로."
+      },
+      {
+        "name": "V4->V2_FB_L5",
+        "enabled": true,
+        "src": {
+          "area": "V4",
+          "layer": [
+            "L5",
+            "L6"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V2",
+          "layer": [
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 4,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 2.16,
+        "probability": 0.15,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.35,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 3.74,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "하향은 L4 밖(주로 L1/apical, L5)을 표적으로 한다. 같은 근거의 집단 수준 경향이며 예외를 금지하는 규칙이 아니다."
+      },
+      {
+        "name": "IT->V4_FB_apical",
+        "enabled": true,
+        "src": {
+          "area": "IT",
+          "layer": [
+            "L5",
+            "L6"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V4",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "apical",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 8,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 2.6,
+        "probability": 0.25,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.5,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 3.8,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "하향은 L4 밖(주로 L1/apical, L5)을 표적으로 한다. 같은 근거의 집단 수준 경향이며 예외를 금지하는 규칙이 아니다."
+      },
+      {
+        "name": "IT->V4_FB_L1",
+        "enabled": true,
+        "src": {
+          "area": "IT",
+          "layer": [
+            "L5",
+            "L6"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V4",
+          "layer": [
+            "L1"
+          ],
+          "cell_type": [
+            "l1_inhibitory"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 4,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 3.12,
+        "probability": 0.15,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.4,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 3.8,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "L1 억제 뉴런을 경유하는 하향 경로."
+      },
+      {
+        "name": "IT->V4_FB_L5",
+        "enabled": true,
+        "src": {
+          "area": "IT",
+          "layer": [
+            "L5",
+            "L6"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V4",
+          "layer": [
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 4,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 3.12,
+        "probability": 0.15,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.35,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 4.18,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "하향은 L4 밖(주로 L1/apical, L5)을 표적으로 한다. 같은 근거의 집단 수준 경향이며 예외를 금지하는 규칙이 아니다."
+      },
+      {
+        "name": "V2->V3_FF_main",
+        "enabled": true,
+        "src": {
+          "area": "V2",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V3",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "spiny_stellate"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 10,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 1.2,
+        "probability": 0.35,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.0,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 2.2,
+        "plasticity_rule": "stdp",
+        "gabor_initialized": false,
+        "note": "상향은 주로 상부층(L2/3) 기원, 중간층(L4) 표적이라는 집단 수준 경향을 쓴다. 개별 시냅스의 완전한 목록이 아니며 기원/종말층 혼합을 허용한다 (Markov 등, Anatomy of hierarchy)."
+      },
+      {
+        "name": "V2->V3_FF_mixed",
+        "enabled": true,
+        "src": {
+          "area": "V2",
+          "layer": [
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V3",
+          "layer": [
+            "L4",
+            "L3"
+          ],
+          "cell_type": [
+            "spiny_stellate",
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 5,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 1.44,
+        "probability": 0.13999999999999999,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.5,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 2.4200000000000004,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "기원/종말층 혼합을 허용하는 소수 경로."
+      },
+      {
+        "name": "V2->V3_FF_inh",
+        "enabled": true,
+        "src": {
+          "area": "V2",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V3",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "pv_basket"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 6,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 1.2,
+        "probability": 0.21,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.8,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 2.2,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "상향 경로에 딸린 전방향 억제."
+      },
+      {
+        "name": "V3->V4_FF_main",
+        "enabled": true,
+        "src": {
+          "area": "V3",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V4",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "spiny_stellate"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 10,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 1.6,
+        "probability": 0.35,
+        "weight": {
+          "dist": "lognormal",
+          "median": 1.0,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 2.4,
+        "plasticity_rule": "stdp",
+        "gabor_initialized": false,
+        "note": "상향은 주로 상부층(L2/3) 기원, 중간층(L4) 표적이라는 집단 수준 경향을 쓴다. 개별 시냅스의 완전한 목록이 아니며 기원/종말층 혼합을 허용한다 (Markov 등, Anatomy of hierarchy)."
+      },
+      {
+        "name": "V3->V4_FF_mixed",
+        "enabled": true,
+        "src": {
+          "area": "V3",
+          "layer": [
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V4",
+          "layer": [
+            "L4",
+            "L3"
+          ],
+          "cell_type": [
+            "spiny_stellate",
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 5,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 1.92,
+        "probability": 0.13999999999999999,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.5,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 2.64,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "기원/종말층 혼합을 허용하는 소수 경로."
+      },
+      {
+        "name": "V3->V4_FF_inh",
+        "enabled": true,
+        "src": {
+          "area": "V3",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V4",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "pv_basket"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 6,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 1.6,
+        "probability": 0.21,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.8,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 2.4,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "상향 경로에 딸린 전방향 억제."
+      },
+      {
+        "name": "V3->V2_FB_apical",
+        "enabled": true,
+        "src": {
+          "area": "V3",
+          "layer": [
+            "L5",
+            "L6"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V2",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "apical",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 8,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 1.6,
+        "probability": 0.25,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.5,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 3.2,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "하향은 L4 밖(주로 L1/apical, L5)을 표적으로 한다. 같은 근거의 집단 수준 경향이며 예외를 금지하는 규칙이 아니다."
+      },
+      {
+        "name": "V3->V2_FB_L1",
+        "enabled": true,
+        "src": {
+          "area": "V3",
+          "layer": [
+            "L5",
+            "L6"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V2",
+          "layer": [
+            "L1"
+          ],
+          "cell_type": [
+            "l1_inhibitory"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 4,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 1.92,
+        "probability": 0.15,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.4,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 3.2,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "L1 억제 뉴런을 경유하는 하향 경로."
+      },
+      {
+        "name": "V3->V2_FB_L5",
+        "enabled": true,
+        "src": {
+          "area": "V3",
+          "layer": [
+            "L5",
+            "L6"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V2",
+          "layer": [
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 4,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 1.92,
+        "probability": 0.15,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.35,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 3.5200000000000005,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "하향은 L4 밖(주로 L1/apical, L5)을 표적으로 한다. 같은 근거의 집단 수준 경향이며 예외를 금지하는 규칙이 아니다."
+      },
+      {
+        "name": "V4->V3_FB_apical",
+        "enabled": true,
+        "src": {
+          "area": "V4",
+          "layer": [
+            "L5",
+            "L6"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V3",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "apical",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 8,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 2.0,
+        "probability": 0.25,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.5,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 3.4,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "하향은 L4 밖(주로 L1/apical, L5)을 표적으로 한다. 같은 근거의 집단 수준 경향이며 예외를 금지하는 규칙이 아니다."
+      },
+      {
+        "name": "V4->V3_FB_L1",
+        "enabled": true,
+        "src": {
+          "area": "V4",
+          "layer": [
+            "L5",
+            "L6"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V3",
+          "layer": [
+            "L1"
+          ],
+          "cell_type": [
+            "l1_inhibitory"
+          ]
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 4,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 2.4,
+        "probability": 0.15,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.4,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 3.4,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "L1 억제 뉴런을 경유하는 하향 경로."
+      },
+      {
+        "name": "V4->V3_FB_L5",
+        "enabled": true,
+        "src": {
+          "area": "V4",
+          "layer": [
+            "L5",
+            "L6"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V3",
+          "layer": [
+            "L5"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 4,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 2.4,
+        "probability": 0.15,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.35,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 3.74,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "하향은 L4 밖(주로 L1/apical, L5)을 표적으로 한다. 같은 근거의 집단 수준 경향이며 예외를 금지하는 규칙이 아니다."
+      },
+      {
+        "name": "V1->V4_bypass",
+        "enabled": true,
+        "src": {
+          "area": "V1",
+          "layer": [
+            "L2",
+            "L3"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "V4",
+          "layer": [
+            "L4"
+          ],
+          "cell_type": [
+            "spiny_stellate"
+          ]
+        },
+        "target_compartment": "basal",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 5,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 1.6,
+        "probability": 0.12,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.6,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 2.6,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": "영역 간 우회 경로. 집단 수준 경향의 예외를 허용한다."
+      },
+      {
+        "name": "V1_L6->LGN_feedback",
+        "enabled": true,
+        "src": {
+          "area": "V1",
+          "layer": [
+            "L6"
+          ],
+          "cell_type": [
+            "pyramidal"
+          ]
+        },
+        "dst": {
+          "area": "LGN",
+          "layer": [
+            "L_relay"
+          ],
+          "cell_type": []
+        },
+        "target_compartment": "soma",
+        "receptor": "AMPA",
+        "rule": "rf_knn",
+        "k": 5,
+        "radius_mm": 0.4,
+        "rf_match_sigma_deg": 1.2,
+        "probability": 0.35,
+        "weight": {
+          "dist": "lognormal",
+          "median": 0.4,
+          "sigma": 0.3,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "conduction_velocity_mm_per_ms": 0.5,
+        "synaptic_delay_ms": 2.5,
+        "plasticity_rule": "none",
+        "gabor_initialized": false,
+        "note": ""
+      }
+    ]
+  },
+  "learning": {
+    "mode": "none",
+    "stdp": {
+      "A_plus": 0.008,
+      "A_minus": 0.01,
+      "tau_plus_ms": 20.0,
+      "tau_minus_ms": 20.0,
+      "weight_min": 0.0,
+      "weight_max": 6.0
+    },
+    "homeostasis": {
+      "eta_theta": 0.002,
+      "window_ms": 500.0,
+      "theta_min_mV": -60.0,
+      "theta_max_mV": -35.0
+    },
+    "rao": {
+      "n_levels": 2,
+      "level_sizes": [
+        32,
+        16
+      ],
+      "sigma": 1.0,
+      "sigma_td": 2.0,
+      "alpha": 0.05,
+      "lambda_u": 0.001,
+      "settle_steps": 40,
+      "r_step": 0.05,
+      "u_step": 0.002
+    }
+  },
+  "readout": {
+    "enabled": true,
+    "source_area": "IT",
+    "source_layer": [
+      "L2",
+      "L3"
+    ],
+    "classifier": "ridge",
+    "l2": 1.0,
+    "n_classes": 7
+  },
+  "recording": {
+    "mode": "selected",
+    "backend": "hdf5",
+    "selection_criterion": "영역마다 균등 간격으로 뽑은 표본 뉴런의 상태와 그 뉴런 관련 이벤트만 저장한다. 전체 뉴런의 매 스텝 상태는 저장하지 않는다.",
+    "selected_areas": [
+      "V1",
+      "V2",
+      "V4",
+      "IT"
+    ],
+    "state_sample_every_steps": 4,
+    "max_events": 12000000,
+    "max_state_samples": 1000000,
+    "flush_every_steps": 200
+  },
+  "checkpoint": {
+    "enabled": true,
+    "every_samples": 8,
+    "keep_last": 3
+  },
+  "experiment": {
+    "protocol": "train_dev_test",
+    "n_samples": 1,
+    "splits": {
+      "train": 0.6,
+      "dev": 0.2,
+      "test": 0.2,
+      "stratified": true
+    },
+    "stimuli": [
+      {
+        "kind": "shape_classes",
+        "params": {
+          "size_px": 96,
+          "classes": [
+            "circle",
+            "triangle",
+            "square",
+            "bar_horizontal",
+            "bar_vertical",
+            "cross",
+            "blank"
+          ],
+          "n_per_class": 6,
+          "n_variants": 2,
+          "radius_px": 18.0,
+          "contrast": 0.4
+        }
+      },
+      {
+        "kind": "color_illumination",
+        "params": {
+          "size_px": 96,
+          "radius_px": 18.0
+        }
+      },
+      {
+        "kind": "transform",
+        "params": {
+          "size_px": 96,
+          "label": "square",
+          "radius_px": 15.0
+        }
+      }
+    ],
+    "limits": {
+      "max_disk_mb": 4096,
+      "max_ram_mb": 8192
+    }
+  },
+  "validation": {
+    "dt_convergence_factors": [
+      1.0,
+      0.5,
+      0.25
+    ],
+    "tolerances": {
+      "lif_dt_convergence_mV": 0.6,
+      "logpolar_roundtrip_deg": 0.05,
+      "dog_uniform_response": 1e-06,
+      "rao_gradient_rel": 0.0001
+    }
+  }
+}

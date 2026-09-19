@@ -1,0 +1,4 @@
+PROJECT_ROOT = Path(__file__).resolve().parent
+#: 단일 파일 판에서는 이 파일 자체가 코드 전체다 (code_hash 의 대상).
+PACKAGE_ROOT = Path(__file__).resolve()
+DEFAULT_RUNS = PROJECT_ROOT / "runs"

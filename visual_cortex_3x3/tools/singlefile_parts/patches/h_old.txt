@@ -1,0 +1,2 @@
+    p = argparse.ArgumentParser(
+        prog="python -m cortex.cli",

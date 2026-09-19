@@ -1,0 +1,8 @@
+모델 로드: results/main/models/local_learning_seed42  (0.15s)
+  뉴런 1024개, 연결 17408개, weight_version=3801
+  조건=local_learning seed=42 epochs=25
+저장한 그림 9개 -> results/main/figures/demo
+  h_center_mid: L2 발화 29 (0°=14, 90°=15)
+  v_center_mid: L2 발화 26 (0°=10, 90°=16)
+  h_offset_hi: L2 발화 6 (0°=5, 90°=1)
+  v_offset_lo: L2 발화 7 (0°=0, 90°=7)

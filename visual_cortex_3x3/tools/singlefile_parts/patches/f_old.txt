@@ -1,0 +1,2 @@
+    def add_cfg(sp: argparse.ArgumentParser) -> None:
+        sp.add_argument("--config", required=True, help="설정 JSON 경로")

@@ -1,0 +1,24 @@
+==============================================================================
+프로필=quick  시드=[42]  에폭=5  조건=['frozen', 'correction_only', 'local_learning', 'shuffled_teacher']
+학습률 탐색=ON [0.01, 0.05, 0.1]
+출력 디렉터리: /home/user/kalest_web_dev_practice/neuron_matrix_v1/results/quick_lrsearch
+==============================================================================
+  frozen            seed=42  test bacc=0.5004  F1=0.0016  (2.8s)
+  correction_only   seed=42  test bacc=0.5004  F1=0.0016  (5.8s)
+  [탐색] local_learning seed=42 lr=0.01: dev bacc=0.5432 (4.4s)
+  [탐색] local_learning seed=42 lr=0.05: dev bacc=0.6949 (4.5s)
+  [탐색] local_learning seed=42 lr=0.1: dev bacc=0.7089 (4.5s)
+  [선택] local_learning: lr=0.1 (평균 dev bacc {0.01: 0.5432186807487387, 0.05: 0.6949112072644535, 0.1: 0.7088637685259402})
+  [탐색] shuffled_teacher seed=42 lr=0.01: dev bacc=0.5051 (4.4s)
+  [탐색] shuffled_teacher seed=42 lr=0.05: dev bacc=0.5317 (4.5s)
+  [탐색] shuffled_teacher seed=42 lr=0.1: dev bacc=0.5278 (4.4s)
+  [선택] shuffled_teacher: lr=0.05 (평균 dev bacc {0.01: 0.5051299581334001, 0.05: 0.531671061269345, 0.1: 0.527844220704563})
+
+==============================================================================
+frozen             test bacc 0.5004 ± 0.0000   F1 0.0016
+correction_only    test bacc 0.5004 ± 0.0000   F1 0.0016
+local_learning     test bacc 0.7299 ± 0.0000   F1 0.4856
+shuffled_teacher   test bacc 0.5222 ± 0.0000   F1 0.0782
+
+총 소요 46.8s · 요약 /home/user/kalest_web_dev_practice/neuron_matrix_v1/results/quick_lrsearch/run_summary.json
+==============================================================================

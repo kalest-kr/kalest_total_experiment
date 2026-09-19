@@ -1,0 +1,16 @@
+def code_hash(package_dir: Path) -> dict[str, Any]:
+    """코드의 sha256 목록과 전체 해시.
+
+    단일 파일 판에서는 ``package_dir`` 이 **이 파일 자체**이므로 그 한 파일을,
+    디렉터리가 주어지면 그 아래 모든 ``*.py`` 를 해싱한다.
+    """
+    package_dir = Path(package_dir)
+    single = package_dir.is_file()
+    files = [package_dir] if single else sorted(
+        p for p in package_dir.rglob("*.py") if "__pycache__" not in p.parts)
+    per: dict[str, str] = {}
+    h = hashlib.sha256()
+    for p in files:
+        d = hashlib.sha256(p.read_bytes()).hexdigest()
+        per[p.name if single else str(p.relative_to(package_dir.parent))] = d
+        h.update(d.encode())

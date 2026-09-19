@@ -1,0 +1,15 @@
+    here = Path(__file__).resolve()
+    with tempfile.TemporaryDirectory() as td:
+        before = set(os.listdir(td))
+        # 단일 파일 판: 이 파일을 경로로 import 해서 부작용이 없는지 본다.
+        code = ("import importlib.util, sys; "
+                "spec = importlib.util.spec_from_file_location("
+                "'cortex_single_check', r'%s'); "
+                "m = importlib.util.module_from_spec(spec); "
+                "sys.modules['cortex_single_check'] = m; "
+                "spec.loader.exec_module(m)" % str(here))
+        proc = subprocess.run([sys.executable, "-c", code], cwd=td,
+                              capture_output=True, text=True, timeout=180, check=False)
+        after = set(os.listdir(td))
+        c.expect(proc.returncode == 0, "단일 파일 전체가 import 된다",
+                 stderr=proc.stderr[-500:])

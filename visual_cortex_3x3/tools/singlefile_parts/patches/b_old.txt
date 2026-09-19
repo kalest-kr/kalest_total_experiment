@@ -1,0 +1,10 @@
+def code_hash(package_dir: Path) -> dict[str, Any]:
+    """패키지 소스 파일들의 sha256 목록과 전체 해시."""
+    files = sorted(p for p in package_dir.rglob("*.py")
+                   if "__pycache__" not in p.parts)
+    per: dict[str, str] = {}
+    h = hashlib.sha256()
+    for p in files:
+        d = hashlib.sha256(p.read_bytes()).hexdigest()
+        per[str(p.relative_to(package_dir.parent))] = d
+        h.update(d.encode())

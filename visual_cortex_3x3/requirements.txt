@@ -1,0 +1,6 @@
+# 필수 수치 백엔드 (GPU / PyTorch 없이 모든 필수 기능이 동작한다)
+numpy>=1.24
+scipy>=1.10
+Pillow>=9.0
+matplotlib>=3.6
+h5py>=3.8
