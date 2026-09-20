@@ -673,14 +673,56 @@ def source_hash() -> dict[str, str]:
         return {"file": "<unknown>", "sha256": "", "error": f"{type(exc).__name__}: {exc}"}
 
 
+def _json_safe(obj: Any) -> Any:
+    """JSON 으로 쓸 수 있는 구조로 바꾼다.
+
+    ``json`` 은 dict 키로 str/int/float/bool/None 만 받는다. 검사 결과처럼 튜플을
+    키로 쓴 곳이 하나라도 있으면 저장 전체가 죽는다. 값은 ``_json_default`` 가
+    처리하지만 **키는 처리할 방법이 없으므로** 여기서 미리 문자열로 만든다.
+    """
+    if isinstance(obj, dict):
+        out: dict[str, Any] = {}
+        for k, v in obj.items():
+            if isinstance(k, (str, int, float, bool)) or k is None:
+                key = k
+            elif isinstance(k, tuple):
+                key = ",".join(str(x) for x in k)
+            else:
+                key = str(k)
+            out[key] = _json_safe(v)
+        return out
+    if isinstance(obj, (list, tuple)):
+        return [_json_safe(v) for v in obj]
+    if isinstance(obj, (set, frozenset)):
+        return [_json_safe(v) for v in sorted(obj, key=str)]
+    return obj
+
+
 def dumps(obj: Any, indent: int | None = 1) -> str:
-    return json.dumps(obj, ensure_ascii=False, indent=indent, default=_json_default)
+    return json.dumps(_json_safe(obj), ensure_ascii=False, indent=indent,
+                      default=_json_default)
 
 
 def write_json(path: Path, obj: Any) -> None:
+    """원자적으로 JSON 을 쓴다.
+
+    직렬화할 수 없는 값이 하나 섞였다고 해서 이미 끝난 실행 결과를 통째로 버리지
+    않는다. 그 경우 문제 지점을 ``repr`` 로 바꿔 저장하고, 무엇을 바꿨는지
+    ``_serialization_fallback`` 에 남긴다.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(dumps(obj), encoding="utf-8")
+    try:
+        text = dumps(obj)
+    except (TypeError, ValueError) as exc:
+        safe = json.loads(json.dumps(_json_safe(obj), ensure_ascii=False,
+                                     default=repr))
+        if isinstance(safe, dict):
+            safe["_serialization_fallback"] = (
+                f"일부 값을 그대로 저장할 수 없어 repr 로 바꿔 저장했다: "
+                f"{type(exc).__name__}: {exc}")
+        text = json.dumps(safe, ensure_ascii=False, indent=1)
+    tmp.write_text(text, encoding="utf-8")
     os.replace(tmp, path)                       # 원자적 교체
 
 
@@ -3923,8 +3965,14 @@ class GainSPSATrainer:
 
     def step(self, images: Any, labels: Any, n_steps: int, *,
              drive_key: tuple[str, int], epoch: int, batch_index: int,
-             recorder: AsyncRecorder | None = None) -> dict[str, Any]:
-        """미니배치 한 번. **완료된 배치에서만** z 를 갱신한다."""
+             recorder: AsyncRecorder | None = None,
+             step_hook: Callable[[dict[str, Any]], None] | None = None
+             ) -> dict[str, Any]:
+        """미니배치 한 번. **완료된 배치에서만** z 를 갱신한다.
+
+        ``step_hook`` 은 스텝마다 호출되며 사건·상태 기록에 쓴다. ± 복제본은 하나의
+        실행에서 replica 축으로 나뉘므로 hook 이 두 조건을 같은 스텝에서 본다.
+        """
         t = require_torch()
         gains = self.model.gains
         z_before = gains.z.clone()
@@ -3934,7 +3982,8 @@ class GainSPSATrainer:
 
         if self.mode == "fixed_gain":
             P = gains.replicas(None)
-            out = self.model.run(drive, P, n_steps, labels=labels)
+            out = self.model.run(drive, P, n_steps, labels=labels,
+                                 step_hook=step_hook)
             self.forward_calls += 1
             rec = {"iteration": self.iteration, "epoch": epoch,
                    "batch_index": batch_index, "mode": self.mode,
@@ -3959,7 +4008,7 @@ class GainSPSATrainer:
             # 방향은 무작위, 크기는 주 조건에서 가져온다 (기록에 남긴다)
             rows = rows * 0.0
         P = gains.replicas(rows)
-        out = self.model.run(drive, P, n_steps, labels=labels)
+        out = self.model.run(drive, P, n_steps, labels=labels, step_hook=step_hook)
         self.forward_calls += R
         losses = out["loss"]                                  # [R]
         g_hat = t.zeros_like(gains.z)
@@ -4096,6 +4145,16 @@ class EventCapture:
             if targets:
                 sel[t.tensor(targets, dtype=t.long, device=model.device)] = True
             self.edge_idx = t.nonzero(sel[syn.dst], as_tuple=False).flatten()
+        # 지연 그룹마다 선택된 edge 를 미리 골라 둔다. 매 스텝·매 복제본마다
+        # 같은 교집합을 다시 계산하지 않는다.
+        keep = t.zeros(syn.n_edges, dtype=t.bool, device=model.device)
+        if self.edge_idx.numel():
+            keep[self.edge_idx] = True
+        self.groups: list[tuple[int, Any]] = []
+        for delay, idx in syn.delay_groups:
+            sub = idx[keep[idx]]
+            if sub.numel():
+                self.groups.append((int(delay), sub))
         self.event_counter = 0
         self.spike_counter = 0
         self.rows: list[np.ndarray] = []
@@ -4123,13 +4182,9 @@ class EventCapture:
         if self.edge_idx.numel() == 0:
             return
         parts_src, parts_edge, parts_amt, parts_delay = [], [], [], []
-        for delay, idx in syn.delay_groups:
+        for delay, sub in self.groups:
             past = ring.read(step, delay)
             if past is None:
-                continue
-            mask = t.isin(idx, self.edge_idx)
-            sub = idx[mask]
-            if sub.numel() == 0:
                 continue
             q = past[replica, batch_row][syn.src[sub]]
             amount = q * syn.w0_nS[sub]
@@ -4683,6 +4738,64 @@ class ExperimentRunner:
         return res
 
     # ------------------------------------------------------------------
+    def _training_record_hook(self, trainer: "GainSPSATrainer", rec: AsyncRecorder, *,
+                              sample_id: int, episode_id: int, base_id: str
+                              ) -> tuple[Callable[[dict[str, Any]], None],
+                                         Callable[[], dict[str, Any]]]:
+        """학습 중에도 선택 뉴런의 사건·상태를 기록한다.
+
+        **보존 정책**: ± 두 조건을 모두 남기되 배치의 첫 표본(batch_row 0)만 기록한다.
+        예산은 :meth:`RecordingPolicy.allocate` 가 표본 수로 미리 나눠 둔 값을 쓴다.
+        기록하지 않은 나머지를 '입력이 없었다' 로 읽으면 안 된다.
+        """
+        assert self.model is not None and self.policy is not None
+        model = self.model
+        if not (self.policy.wants_events() or self.policy.wants_states()):
+            def skip() -> dict[str, Any]:
+                self.global_step += self.n_steps   # 기록을 안 해도 시각은 흐른다
+                return {"recorded": False, "reason": "recording.mode=summary"}
+            return (lambda info: None), skip
+        capture = EventCapture(model, self.policy) if self.policy.wants_events() else None
+        selected = list(self.policy.selected_ids) if self.policy.wants_states() else []
+        base_seq = int(hashlib.sha256(base_id.encode()).hexdigest()[:8], 16)
+        rec.begin_sample()
+        phases = (["base"] if trainer.mode == "fixed_gain"
+                  else ["plus" if r % 2 == 0 else "minus"
+                        for r in range(2 * trainer.K)])
+
+        def hook(info: dict[str, Any]) -> None:
+            n_rep = int(info["q"].shape[0])
+            if capture is not None:
+                # 이 스텝에 실제로 쓰인 P 를 읽는다 (model.run 이 먼저 set_current 한다).
+                P_now = model.gains.P()
+                for r in range(min(n_rep, len(phases))):
+                    capture.capture(
+                        info, sample_id=sample_id, base_seq=base_seq,
+                        episode_id=episode_id, phase=phases[r],
+                        perturbation_id=trainer.iteration,
+                        global_step=self.global_step + int(info["step"]),
+                        run_seq=self.run_seq, replica=r, batch_row=0, P=P_now)
+            if selected and int(info["step"]) % self.policy.state_every == 0:
+                rec.write_states(state_rows(
+                    model, info, selected, sample_id=sample_id,
+                    episode_id=episode_id, replica=0,
+                    global_step=self.global_step + int(info["step"])))
+
+        def finish() -> dict[str, Any]:
+            self.global_step += self.n_steps
+            if capture is None:
+                return {"recorded": False, "reason": "recording.mode 가 사건을 남기지 않는다"}
+            rows = capture.drain()
+            rec.write_events(rows, capture.n_emitted, capture.n_arrived,
+                             capture.n_filtered)
+            return {"recorded": True, "emitted": capture.n_emitted,
+                    "arrived": capture.n_arrived, "filtered": capture.n_filtered,
+                    "rows_built": int(rows.shape[0]),
+                    "replicas_recorded": len(phases), "batch_rows_recorded": 1}
+
+        return hook, finish
+
+    # ------------------------------------------------------------------
     def _checkpoint_payload(self, trainer: GainSPSATrainer, *, epoch: int,
                             next_batch_index: int, next_sample_index: int,
                             order: np.ndarray) -> tuple[dict[str, Any], dict[str, np.ndarray]]:
@@ -4754,6 +4867,10 @@ class ExperimentRunner:
         n_batches = max(1, math.ceil(len(train) / bs))
         self.policy.allocate(max(1, len(train) * max(1, n_epochs)))
         rec.manifest["recording_budget"] = self.policy.to_dict()
+        rec.manifest["training_retention_ko"] = (
+            "학습 중 사건 기록은 배치의 첫 표본(batch_row 0)만 남기고 ± 두 조건을 "
+            "모두 남긴다. 상태 기록은 replica 0 만 남긴다. 예산은 표본 수로 미리 "
+            "나눈다. 남기지 않은 부분을 '입력이 없었다' 로 해석하면 안 된다.")
         rec.manifest["trainer"] = trainer.describe()
         rec.manifest["experiment_status"] = "running"
         before = model.gains.P_from_z(model.gains.z).clone()
@@ -4801,9 +4918,15 @@ class ExperimentRunner:
                         continue
                     batch = [train[int(i)] for i in sel]
                     images, labels = self._batch_tensor(batch)
+                    sample_id = int(bi * bs)
+                    hook, finish = self._training_record_hook(
+                        trainer, rec, sample_id=sample_id, episode_id=epoch,
+                        base_id=batch[0].base_id)
                     r = trainer.step(images, labels, self.n_steps,
                                      drive_key=("input_noise", epoch * 10_000 + bi),
-                                     epoch=epoch, batch_index=bi, recorder=rec)
+                                     epoch=epoch, batch_index=bi, recorder=rec,
+                                     step_hook=hook)
+                    r["event_counts"] = finish()
                     r["n_in_batch"] = len(batch)
                     history.append(r)
                     rec.metric(kind="train_batch", **r)
@@ -5050,8 +5173,26 @@ class NeuronInspector:
         self.dir = Path(run_dir)
         self.manifest = read_json(self.dir / "manifest.json") \
             if (self.dir / "manifest.json").is_file() else {}
+        if not (self.dir / "manifest.json").is_file():
+            raise FileNotFoundError(
+                f"실행 폴더가 아니다 (manifest.json 이 없다): {self.dir}\n"
+                f"  메뉴 4(시뮬레이션) 또는 5(학습)가 만든 폴더를 넣어라. "
+                f"그 폴더 이름은 simulate_... 또는 train_... 으로 시작한다.")
         backend = str(self.manifest.get("recording", {}).get("backend", "auto"))
         self.store = TableStore(self.dir, backend if backend in ("hdf5", "npz") else "auto")
+
+    def available_tables(self) -> dict[str, Any]:
+        """이 폴더에 어떤 기록 표가 있는지. '로그에 없다 = 입력이 없었다' 가 아니다."""
+        out: dict[str, Any] = {"backend": self.store.backend,
+                               "recording_mode": self.manifest.get(
+                                   "recording", {}).get("policy", {}).get("mode")}
+        for table in ("events", "states", "gain_updates"):
+            fields, rows = self.store.read_all(table)
+            out[table] = {"rows": int(rows.shape[0]) if rows.size else 0,
+                          "fields": len(fields)}
+        out["note_ko"] = ("기록하지 않은 내용을 '입력이 없었다' 로 해석하면 안 된다. "
+                          "recording.mode 와 선택 뉴런 목록을 함께 보라.")
+        return out
 
     def events_for(self, neuron_id: int, *, sample_id: int | None = None,
                    episode_id: int | None = None, replica_id: int | None = None,
@@ -5879,8 +6020,11 @@ class ValidationSuite:
         rows = cap.drain()
         col = {k: i for i, k in enumerate(EVENT_FIELDS)}
         combos = {(int(r[col["sample_id"]]), int(r[col["episode_id"]])) for r in rows}
-        per_combo = {c: int(sum(1 for r in rows
-                                if (int(r[col["sample_id"]]), int(r[col["episode_id"]])) == c))
+        # 키는 JSON 으로 저장되므로 튜플이 아니라 사람이 읽는 문자열로 만든다.
+        per_combo = {f"sample={c[0]},episode={c[1]}":
+                     int(sum(1 for r in rows
+                             if (int(r[col["sample_id"]]),
+                                 int(r[col["episode_id"]])) == c))
                      for c in sorted(combos)}
         ids_unique = len({int(r[col["event_id"]]) for r in rows}) == rows.shape[0]
         last_ids = cap.last_event_id_per_target
@@ -5892,7 +6036,8 @@ class ValidationSuite:
             STATUS_PASSED if passed else STATUS_FAILED,
             "4개 (sample, episode) 조합이 각각 같은 수의 행을 갖고, event_id 가 모두 "
             "유일하며, 표적별 마지막 event_id 가 하나의 값으로 뭉개지지 않는다",
-            {"combinations": sorted(combos), "rows_per_combination": per_combo,
+            {"combinations": [list(c) for c in sorted(combos)],
+             "rows_per_combination": per_combo,
              "event_ids_unique": ids_unique,
              "distinct_last_event_ids": distinct_last,
              "n_targets_with_last_id": len(last_ids)},
@@ -6955,6 +7100,18 @@ class KoreanMenu:
                       f"판정 {r.get('learning_outcome', {}).get('verdict')}")
             print(f"\n결과: {res['root']}")
         elif choice == "7":
+            print("\n  넣을 것은 **파일이 아니라 실행 폴더**다. 메뉴 4(시뮬레이션)나 "
+                  "5(학습)가 끝날 때 찍어 준 '결과: ...' 경로를 그대로 붙여넣어라.")
+            print(f"  예) {out / 'simulate_20260920T012345Z_ab12cd34'}")
+            print("  그 폴더 안에 manifest.json, resolved_config.json, "
+                  "events.h5(또는 events_chunk*.npz) 가 있다.")
+            recent = sorted((d for d in out.iterdir()
+                             if d.is_dir() and (d / "manifest.json").is_file()),
+                            key=lambda d: d.stat().st_mtime, reverse=True)[:5]
+            if recent:
+                print("  최근 실행 폴더:")
+                for d in recent:
+                    print(f"    - {d}")
             rd = clean_user_path(_ask("조회할 실행 폴더"))
             nid = int(_ask("뉴런 ID", "0"))
             sample = _ask("sample_id (비우면 전체)", "")
@@ -6968,6 +7125,13 @@ class KoreanMenu:
                 scope["episode_id"] = int(episode)
             if replica:
                 scope["replica_id"] = int(replica)
+            tables = insp.available_tables()
+            print("\n[이 폴더의 기록]")
+            print(dumps(tables))
+            if tables["events"]["rows"] == 0:
+                print("  [알림] 이 폴더에는 입력 사건 행이 없다. recording.mode 가 "
+                      "summary 였거나, 조회하려는 뉴런이 선택 목록에 없었을 수 있다. "
+                      "아래 3x3 조회의 구조·메타데이터는 그대로 볼 수 있다.")
             res = insp.explain(nid, **scope)
             print(dumps({k: v for k, v in res.items() if k != "events"})[:3000])
             cfg_run = read_json(rd / "resolved_config.json")
