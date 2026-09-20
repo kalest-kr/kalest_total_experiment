@@ -464,6 +464,14 @@ FIX_REGISTER: tuple[FixEntry, ...] = (
              "준비 산출물은 실행마다 한 번 preparation_state.json 에 저장하고 "
              "체크포인트에는 경로와 해시만 둔다. 재개 시 해시가 다르면 멈춘다.",
              "check_22_resume"),
+    FixEntry("F37",
+             "준비 단계에서 INSUFFICIENT_SIGNAL 로 중단한 실행의 보고서가 학습 절을 "
+             "일반 경로로 찍어, 왜 멈췄는지 대신 P 변화·판정이 전부 None 으로 "
+             "나왔다. 사용자가 preparation.json 을 직접 열어야 원인을 알 수 있었다.",
+             "중단 실행은 보고서에 '왜 멈췄는가' 절을 따로 찍는다. 영역별 양의 발화 "
+             "수, 표본 간 분산, 원인 후보와 다음에 볼 것을 수치와 함께 적고, 없는 "
+             "학습 수치를 0 으로 채우지 않는다. 그림 생성도 이유를 밝히며 거부한다.",
+             "check_46_insufficient_signal_is_explained"),
     FixEntry("F36",
              "ReportBuilder 가 manifest.json 이 없는 폴더도 받아들여, 사용자가 실행 "
              "폴더 대신 그 안의 figures 폴더를 붙여넣으면 값이 전부 비어 있는 "
@@ -8417,12 +8425,27 @@ class ExperimentRunner:
             reuse_preparation = saved_prep
         prep = self.prepare_readouts(reuse=reuse_preparation)
         if prep.get("status") == STATUS_INSUFFICIENT_SIGNAL:
-            result = {"mode": condition, "status": STATUS_INSUFFICIENT_SIGNAL,
-                      "preparation": prep,
-                      "reason_ko": ("IT 까지 신호가 도착하지 않아 학습을 시작하지 "
-                                    "않는다. 임의 정확도를 출력하지 않는다.")}
+            result = {
+                "mode": condition, "status": STATUS_INSUFFICIENT_SIGNAL,
+                "stopped_at": "readout_preparation",
+                "preparation": prep,
+                "diagnosis": self._signal_diagnosis(prep),
+                "reason_ko": ("최상위 영역까지 쓸 수 있는 신호가 오지 않아 학습을 "
+                              "시작하지 않았다. 임의 정확도를 출력하지 않는다."),
+                "not_run_ko": ("학습 루프를 돌지 않았으므로 metrics.jsonl, "
+                               "체크포인트, dev/test 평가, 학습 곡선이 없다. "
+                               "없는 것을 0 이나 실패로 채우지 않는다."),
+            }
             write_json(self.run_dir / "train.json", result)
+            write_json(self.run_dir / "assumptions.json",
+                       {"assumptions": assumptions_rows(),
+                        "implementation_status": implementation_status_rows()})
+            write_json(self.run_dir / "evaluation_counters.json",
+                       {"test_access": self.test_access,
+                        "split_access": self.split_access,
+                        "note_ko": "준비 단계에서 중단해 dev/test 를 평가하지 않았다."})
             rec.manifest["experiment_status"] = STATUS_INSUFFICIENT_SIGNAL
+            rec.manifest["diagnosis"] = result["diagnosis"]
             rec.close(STATUS_INSUFFICIENT_SIGNAL, result["reason_ko"])
             return result
 
@@ -8649,6 +8672,69 @@ class ExperimentRunner:
                                 if not isinstance(v, (dict, list))} for h in history])
         rec.close(status, reason)
         return result
+
+    @staticmethod
+    def _signal_diagnosis(prep: dict[str, Any]) -> dict[str, Any]:
+        """준비 단계가 멈춘 이유를 **수치와 함께** 남긴다 (명세 19절 실패 진단).
+
+        원인을 하나로 단정하지 않는다. 각 후보마다 근거가 된 숫자를 붙이고,
+        확인되지 않은 것은 확인되지 않았다고 적는다.
+        """
+        it = dict(prep.get("it_variability") or {})
+        scales = dict((prep.get("rate_scale") or {}).get("areas") or {})
+        silent = sorted(a for a, v in scales.items()
+                        if int(v.get("n_positive", 0)) == 0)
+        alive = sorted(a for a, v in scales.items()
+                       if int(v.get("n_positive", 0)) > 0)
+        causes: list[dict[str, Any]] = []
+        if silent:
+            causes.append({
+                "cause": "signal_did_not_reach_area",
+                "areas_with_no_positive_firing": silent,
+                "areas_with_firing": alive,
+                "evidence_ko": (f"{silent} 영역에서 양의 발화가 하나도 없다. "
+                                f"정규화로 숨기지 않고 신호 전달 실패로 보고한다."),
+                "what_to_do_ko": ("메뉴 3(전달 진단)으로 어느 단계에서 끊기는지 "
+                                  "먼저 확인하라. 망막→LGN→V1 이 살아 있는데 상위가 "
+                                  "죽어 있으면 영역 간 배선·지연·w0 문제다."),
+            })
+        if it and it.get("n_prep_samples", 0) >= 2 and not silent:
+            causes.append({
+                "cause": "top_area_output_does_not_vary_across_samples",
+                "between_sample_variance": it.get("between_sample_variance"),
+                "max_abs_difference_to_first": it.get("max_abs_difference_to_first"),
+                "active_fraction": it.get("active_fraction"),
+                "evidence_ko": ("최상위 영역이 발화는 하지만 표본마다 같은 값을 "
+                                "낸다. 이 상태에서 분류기를 학습하면 동률 argmax 가 "
+                                "나오므로 시작하지 않았다."),
+                "what_to_do_ko": ("표본 길이(engine.sample_ms)를 늘리거나 입력 "
+                                  "대비를 키워 보라. 포화(active_fraction 이 1 에 "
+                                  "가까움)면 모든 뉴런이 항상 발화하는 것이다."),
+            })
+        if it and int(it.get("n_prep_samples", 0)) < 2:
+            causes.append({
+                "cause": "too_few_preparation_samples",
+                "n_prep_samples": it.get("n_prep_samples"),
+                "evidence_ko": "준비 표본이 2개 미만이라 표본 간 변동을 잴 수 없다.",
+                "what_to_do_ko": "readout_prep.n_preparation_samples 를 늘려라.",
+            })
+        if not causes:
+            causes.append({
+                "cause": "unclassified",
+                "evidence_ko": ("준비 단계가 멈췄지만 위 분류에 들어맞지 않는다. "
+                                "preparation.json 전체를 보라."),
+            })
+        return {
+            "stopped_at": "readout_preparation",
+            "candidate_causes": causes,
+            "rate_scale_by_area": {a: {"rate_scale_hz": v.get("rate_scale_hz"),
+                                       "n_positive": v.get("n_positive"),
+                                       "status": v.get("status")}
+                                   for a, v in scales.items()},
+            "it_variability": it,
+            "single_cause_note_ko": ("원인을 하나로 단정할 때는 그 요소만 바꾼 비교 "
+                                     "근거를 함께 제시해야 한다. 위 목록은 후보다."),
+        }
 
     @staticmethod
     def _threshold_outcome(history: list[dict[str, Any]],
@@ -9426,7 +9512,44 @@ class ReportBuilder:
                 continue
             A(f"## {title} (`{name}`)")
             A("")
-            if name == "train.json":
+            if name == "train.json" and data.get("status") == STATUS_INSUFFICIENT_SIGNAL:
+                # 학습 루프를 돌지 않았다. 없는 수치를 0 으로 채우지 않는다.
+                A(f"- 상태: **{STATUS_UPPER[STATUS_INSUFFICIENT_SIGNAL]}** — "
+                  f"{data.get('reason_ko','')}")
+                A(f"- 조건: `{data.get('mode')}` / 중단 지점: "
+                  f"`{data.get('stopped_at')}`")
+                A(f"- {data.get('not_run_ko','')}")
+                A("")
+                diag = data.get("diagnosis") or {}
+                A("### 왜 멈췄는가 (가능한 원인과 근거 수치)")
+                A("")
+                for c in diag.get("candidate_causes", []):
+                    A(f"- **`{c.get('cause')}`** — {c.get('evidence_ko','')}")
+                    for k, v in c.items():
+                        if k in ("cause", "evidence_ko", "what_to_do_ko"):
+                            continue
+                        A(f"    - {k}: `{v}`")
+                    if c.get("what_to_do_ko"):
+                        A(f"    - 다음에 볼 것: {c['what_to_do_ko']}")
+                A("")
+                rs = diag.get("rate_scale_by_area") or {}
+                if rs:
+                    A("| 영역 | rate_scale (Hz) | 양의 발화 표본 수 | 상태 |")
+                    A("|---|---|---|---|")
+                    for area, v in rs.items():
+                        A(f"| {area} | {v.get('rate_scale_hz')} | "
+                          f"{v.get('n_positive')} | {v.get('status')} |")
+                    A("")
+                itv = diag.get("it_variability") or {}
+                if itv:
+                    A(f"- 최상위 영역 표본 간 분산: `{itv.get('between_sample_variance')}` "
+                      f"/ 첫 표본과의 최대 차이: "
+                      f"`{itv.get('max_abs_difference_to_first')}` "
+                      f"/ 활성 비율: `{itv.get('active_fraction')}` "
+                      f"(준비 표본 {itv.get('n_prep_samples')}개)")
+                A(f"- {diag.get('single_cause_note_ko','')}")
+                A("")
+            elif name == "train.json":
                 A(f"- 상태: **{data.get('status')}** {data.get('reason','')}")
                 A(f"- 조건: `{data.get('mode')}` / 순방향 호출 {data.get('forward_calls')}")
                 if data.get("theta_change") is not None:
@@ -9665,6 +9788,19 @@ def make_figures(run_dir: Path) -> list[str]:
             made.append(str(p))
     if not made:
         have = sorted(f.name for f in run_dir.iterdir() if f.is_file())
+        train_status = None
+        if (run_dir / "train.json").is_file():
+            train_status = (read_json(run_dir / "train.json") or {}).get("status")
+        if train_status == STATUS_INSUFFICIENT_SIGNAL:
+            raise RuntimeError(
+                f"이 실행은 준비 단계에서 중단됐다 (status="
+                f"{STATUS_UPPER[STATUS_INSUFFICIENT_SIGNAL]}): {run_dir}\n"
+                f"  학습 루프를 돌지 않았으므로 그릴 학습 곡선이 없다. 없는 곡선을 "
+                f"만들어내지 않는다.\n"
+                f"  멈춘 이유는 report_ko.md 의 '왜 멈췄는가' 절과 "
+                f"preparation.json 에 수치와 함께 들어 있다.\n"
+                f"  먼저 메뉴 3(전달 진단)으로 어느 단계에서 신호가 끊기는지 "
+                f"확인하라.")
         raise RuntimeError(
             f"이 실행 폴더에는 그릴 수 있는 기록이 없다: {run_dir}\n"
             f"  그림은 metrics.jsonl (학습/평가 행) 또는 train.json 의 "
@@ -9791,6 +9927,7 @@ class ValidationSuite:
             self.check_43_snapshot_restores_threshold_state,
             self.check_44_dataset_paired_and_labels,
             self.check_45_run_dir_resolution,
+            self.check_46_insufficient_signal_is_explained,
         ]
         results: list[CheckResult] = []
         for fn in checks:
@@ -11685,6 +11822,77 @@ class ValidationSuite:
                            "도달하지 못하는 신호 전달 실패일 수도 있으므로 "
                            "check_14 전달 진단과 함께 읽어야 한다.")})
 
+    def check_46_insufficient_signal_is_explained(self) -> CheckResult:
+        """준비 단계에서 멈춘 실행의 보고서가 **이유와 수치**를 보여 주는지.
+
+        학습 루프를 돌지 않았으면 학습 수치를 0 으로 채우지 않고, 어떤 영역에서
+        신호가 끊겼는지 근거 숫자와 함께 적어야 한다.
+        """
+        prep = {
+            "status": STATUS_INSUFFICIENT_SIGNAL,
+            "it_variability": {"between_sample_variance": 0.0,
+                               "active_fraction": 0.0,
+                               "max_abs_difference_to_first": 0.0,
+                               "n_prep_samples": 56,
+                               "status": STATUS_INSUFFICIENT_SIGNAL},
+            "rate_scale": {"percentile": 95.0, "areas": {
+                "V1": {"rate_scale_hz": 12.5, "n_positive": 340, "status": "ok"},
+                "IT": {"rate_scale_hz": 1.0, "n_positive": 0,
+                       "status": STATUS_INSUFFICIENT_SIGNAL}}},
+        }
+        diag = ExperimentRunner._signal_diagnosis(prep)
+        obs: dict[str, Any] = {
+            "named_silent_areas": (diag["candidate_causes"][0]
+                                   .get("areas_with_no_positive_firing") == ["IT"]),
+            "named_living_areas": (diag["candidate_causes"][0]
+                                   .get("areas_with_firing") == ["V1"]),
+            "does_not_assert_single_cause": bool(diag.get("single_cause_note_ko")),
+        }
+        tmp = Path(tempfile.mkdtemp(prefix="vcg_insuf_"))
+        try:
+            write_json(tmp / "train.json", {
+                "mode": "frozen_threshold", "status": STATUS_INSUFFICIENT_SIGNAL,
+                "stopped_at": "readout_preparation", "preparation": prep,
+                "diagnosis": diag, "reason_ko": "신호가 오지 않아 시작하지 않았다.",
+                "not_run_ko": "학습 곡선이 없다."})
+            write_json(tmp / "manifest.json", {
+                "run_id": "insuf", "status": STATUS_INSUFFICIENT_SIGNAL,
+                "learning": {"mode": "frozen_threshold",
+                             "trainable": ["theta_base"]},
+                "code": {"sha256": "abc"}, "config_sha256": "def",
+                "environment": {}, "device": str(self.device),
+                "dtype": str(self.dtype),
+                "deterministic": {"status": "n/a", "note_ko": ""}})
+            text = ReportBuilder(tmp).build().read_text(encoding="utf-8")
+            obs["report_states_insufficient"] = (
+                STATUS_UPPER[STATUS_INSUFFICIENT_SIGNAL] in text)
+            obs["report_names_stop_point"] = "readout_preparation" in text
+            obs["report_lists_cause"] = "signal_did_not_reach_area" in text
+            obs["report_shows_rate_scale_table"] = "12.5" in text and "340" in text
+            obs["report_has_no_fake_accuracy"] = (
+                "정확도 0" not in text and "accuracy" not in text.lower())
+            try:
+                make_figures(tmp)
+                obs["figures_refused"] = False
+            except RuntimeError as exc:
+                obs["figures_refused"] = True
+                obs["figures_message_explains"] = (
+                    STATUS_UPPER[STATUS_INSUFFICIENT_SIGNAL] in str(exc))
+            except Exception:
+                obs["figures_refused"] = True
+                obs["figures_message_explains"] = False
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+        passed = all(bool(v) for v in obs.values())
+        return CheckResult(
+            "check_46_insufficient_signal_is_explained",
+            "준비 단계 중단 실행의 보고서가 이유·수치를 보여 주고 가짜 수치를 "
+            "만들지 않는다",
+            STATUS_PASSED if passed else STATUS_FAILED,
+            "보고서에 INSUFFICIENT_SIGNAL, 중단 지점, 원인 후보, 영역별 발화 수가 "
+            "나오고, 그림 생성은 이유를 밝히며 거부한다",
+            obs, "임시 폴더에 만든 중단 실행 기록 -> ReportBuilder / make_figures")
+
     def check_45_run_dir_resolution(self) -> CheckResult:
         """실행 폴더가 아닌 경로에서 **빈 보고서를 만들지 않는지** 확인한다.
 
@@ -12131,9 +12339,22 @@ class KoreanMenu:
                                  epochs=epochs,
                                  progress=lambda m: print(f"  … {m}"))
             for cond, r in res["results"].items():
-                print(f"  {cond:28s} 상태 {r.get('status'):10s} "
+                print(f"  {cond:28s} 상태 {str(r.get('status')):20s} "
                       f"순방향 {r.get('forward_calls')} "
-                      f"판정 {r.get('learning_outcome', {}).get('verdict')}")
+                      f"판정 {(r.get('learning_outcome') or {}).get('verdict')}")
+                if r.get("status") != "completed":
+                    print(f"      -> {r.get('reason_ko') or r.get('reason') or ''}")
+                    for c in (r.get("diagnosis") or {}).get("candidate_causes", []):
+                        print(f"      -> 원인 후보 `{c.get('cause')}`: "
+                              f"{c.get('evidence_ko','')}")
+                    if r.get("error"):
+                        print(f"      -> 오류: {r['error']}")
+            bad = [c for c, r in res["results"].items()
+                   if r.get("status") != "completed"]
+            if bad:
+                print(f"\n  [알림] 완료되지 않은 조건 {len(bad)}개: {bad}")
+                print("         각 조건 폴더의 report_ko.md 와 preparation.json 에 "
+                      "수치와 함께 이유가 들어 있다.")
             print(f"\n결과: {res['root']}")
         elif choice == "7":
             print("\n  넣을 것은 **파일이 아니라 실행 폴더**다. 메뉴 4(시뮬레이션)나 "
