@@ -464,6 +464,14 @@ FIX_REGISTER: tuple[FixEntry, ...] = (
              "준비 산출물은 실행마다 한 번 preparation_state.json 에 저장하고 "
              "체크포인트에는 경로와 해시만 둔다. 재개 시 해시가 다르면 멈춘다.",
              "check_22_resume"),
+    FixEntry("F36",
+             "ReportBuilder 가 manifest.json 이 없는 폴더도 받아들여, 사용자가 실행 "
+             "폴더 대신 그 안의 figures 폴더를 붙여넣으면 값이 전부 비어 있는 "
+             "report_ko.md 를 조용히 만들었다.",
+             "resolve_run_dir 로 실행 폴더를 먼저 확정한다. figures 같은 하위 "
+             "폴더는 한 단계 위를 쓰고 그 사실을 알리며, 실행 폴더가 아니면 무엇을 "
+             "넣어야 하는지 말하고 멈춘다. 빈 보고서를 만들지 않는다.",
+             "check_45_run_dir_resolution"),
     FixEntry("F35",
              "corrupt_image 가 요청한 손상 비율과 실제 비율이 다를 수 있는데 요청값만 "
              "기록했다.",
@@ -9095,14 +9103,8 @@ class NeuronInspector:
     """
 
     def __init__(self, run_dir: Path) -> None:
-        self.dir = Path(run_dir)
-        self.manifest = read_json(self.dir / "manifest.json") \
-            if (self.dir / "manifest.json").is_file() else {}
-        if not (self.dir / "manifest.json").is_file():
-            raise FileNotFoundError(
-                f"실행 폴더가 아니다 (manifest.json 이 없다): {self.dir}\n"
-                f"  메뉴 4(시뮬레이션) 또는 5(학습)가 만든 폴더를 넣어라. "
-                f"그 폴더 이름은 simulate_... 또는 train_... 으로 시작한다.")
+        self.dir, self.resolve_note = resolve_run_dir(Path(run_dir))
+        self.manifest = read_json(self.dir / "manifest.json")
         backend = str(self.manifest.get("recording", {}).get("backend", "auto"))
         self.store = TableStore(self.dir, backend if backend in ("hdf5", "npz") else "auto")
 
@@ -9268,19 +9270,61 @@ def _mean_of(rows: Sequence[dict[str, Any]], key: str) -> float | None:
     return float(np.mean(vals)) if vals else None
 
 
+#: 실행 폴더 **안에** 생기는 하위 폴더들. 사용자가 이 중 하나를 붙여넣으면
+#: 한 단계 위가 실제 실행 폴더다.
+RUN_SUBDIRS: frozenset[str] = frozenset(
+    {"figures", "checkpoints", "selected_neuron_logs"})
+
+
+def resolve_run_dir(path: Path) -> tuple[Path, str]:
+    """붙여넣은 경로를 **실제 실행 폴더**로 확정한다.
+
+    실행 폴더는 ``manifest.json`` 이 있는 폴더다. 없으면 빈 보고서를 만들지 않고
+    무엇을 넣어야 하는지 알려 주며 멈춘다.
+
+    Returns
+    -------
+    (실행 폴더, 알림 문자열). 알림이 빈 문자열이 아니면 입력과 다른 폴더를 썼다는
+    뜻이며, 호출한 쪽이 사용자에게 그대로 보여 준다. 조용히 바꾸지 않는다.
+    """
+    d = Path(path)
+    if not d.is_dir():
+        raise FileNotFoundError(f"폴더가 없다: {d}")
+    if (d / "manifest.json").is_file():
+        return d, ""
+    # 1) figures / checkpoints 등 실행 폴더 **안의** 하위 폴더를 넣은 경우
+    if d.name in RUN_SUBDIRS and (d.parent / "manifest.json").is_file():
+        return d.parent, (f"'{d.name}' 는 실행 폴더 안의 하위 폴더다. 한 단계 위인 "
+                          f"실행 폴더를 사용했다: {d.parent}")
+    # 2) 비교 실행의 루트처럼 실행 폴더 **여러 개를 담은** 폴더를 넣은 경우
+    children = sorted(c for c in d.iterdir()
+                      if c.is_dir() and (c / "manifest.json").is_file())
+    if children:
+        listing = "\n".join(f"    - {c}" for c in children[:10])
+        raise FileNotFoundError(
+            f"이 폴더는 실행 폴더가 아니라 실행 폴더 여러 개를 담고 있다: {d}\n"
+            f"  아래 중 하나를 붙여넣어라 (조건마다 보고서가 따로 만들어진다):\n"
+            f"{listing}")
+    raise FileNotFoundError(
+        f"실행 폴더가 아니다 (manifest.json 이 없다): {d}\n"
+        f"  메뉴 4(시뮬레이션)·5(학습)·6(비교)가 끝날 때 찍어 준 '결과: ...' 경로를 "
+        f"그대로 붙여넣어라.\n"
+        f"  그 폴더 안에 manifest.json, resolved_config.json 이 있다. "
+        f"figures 같은 하위 폴더가 아니라 그 **한 단계 위** 폴더다.\n"
+        f"  기록이 없는 폴더로 빈 보고서를 만들지 않는다.")
+
+
 class ReportBuilder:
     """**저장된 JSON/CSV 에서만** 한국어 보고서를 만든다 (F27).
 
     보고서에 새 수치를 계산해 넣지 않는다. 실행하지 않은 항목은 그대로
-    ``not_run`` 으로 적는다.
+    ``not_run`` 으로 적는다. ``manifest.json`` 이 없는 폴더에서는 빈 보고서를
+    만들지 않고 :func:`resolve_run_dir` 이 무엇을 넣어야 하는지 알려 준다.
     """
 
     def __init__(self, run_dir: Path) -> None:
-        self.dir = Path(run_dir)
-        if not self.dir.is_dir():
-            raise FileNotFoundError(f"실행 폴더가 없다: {self.dir}")
-        self.manifest = read_json(self.dir / "manifest.json") \
-            if (self.dir / "manifest.json").is_file() else {}
+        self.dir, self.resolve_note = resolve_run_dir(Path(run_dir))
+        self.manifest = read_json(self.dir / "manifest.json")
 
     def _load(self, name: str) -> Any | None:
         p = self.dir / name
@@ -9513,12 +9557,11 @@ def make_figures(run_dir: Path) -> list[str]:
         raise RuntimeError(
             f"matplotlib 를 쓸 수 없다: {type(exc).__name__}: {exc}\n"
             f"  python -m pip install matplotlib") from exc
-    run_dir = Path(run_dir)
+    run_dir, resolve_note = resolve_run_dir(Path(run_dir))
     fig_dir = ensure_writable_dir(run_dir / "figures")
     made: list[str] = []
     # 모든 그림에 run ID·조건·seed·source 를 적는다.
-    mani = read_json(run_dir / "manifest.json") \
-        if (run_dir / "manifest.json").is_file() else {}
+    mani = read_json(run_dir / "manifest.json")
     label = (f"run={run_dir.name} 조건={mani.get('learning', {}).get('mode')} "
              f"seed={mani.get('config', {}).get('seed')} "
              f"source=metrics.jsonl/train.json")
@@ -9621,11 +9664,18 @@ def make_figures(run_dir: Path) -> list[str]:
             fig.savefig(p, dpi=120); plt.close(fig)
             made.append(str(p))
     if not made:
+        have = sorted(f.name for f in run_dir.iterdir() if f.is_file())
         raise RuntimeError(
-            f"그릴 수 있는 저장 기록이 없다: {run_dir}. 학습/평가를 먼저 실행하라. "
-            f"기록 없이 학습 곡선을 만들어내지 않는다.")
+            f"이 실행 폴더에는 그릴 수 있는 기록이 없다: {run_dir}\n"
+            f"  그림은 metrics.jsonl (학습/평가 행) 또는 train.json 의 "
+            f"theta_change / paired_correction_metrics 에서만 만든다.\n"
+            f"  이 폴더에 있는 파일: {have}\n"
+            f"  메뉴 2(검증)·3(진단) 실행 폴더에는 학습 곡선이 없다. 메뉴 5(학습) "
+            f"또는 6(비교)의 조건별 실행 폴더를 넣어라.\n"
+            f"  기록 없이 학습 곡선을 만들어내지 않는다.")
     write_json(fig_dir / "figure_manifest.json", {
         "run_id": run_dir.name, "figures": made, "label": label,
+        "resolved_from_note_ko": resolve_note or None,
         "source_files": [str(run_dir / "metrics.jsonl"), str(run_dir / "train.json")],
         "note_ko": ("모든 그림은 저장된 로그에서만 만들었다. 계산을 다시 돌리지 "
                     "않았고 미리 그린 곡선도 없다."),
@@ -9740,6 +9790,7 @@ class ValidationSuite:
             self.check_42_area_perturbation_has_effect,
             self.check_43_snapshot_restores_threshold_state,
             self.check_44_dataset_paired_and_labels,
+            self.check_45_run_dir_resolution,
         ]
         results: list[CheckResult] = []
         for fn in checks:
@@ -11634,6 +11685,63 @@ class ValidationSuite:
                            "도달하지 못하는 신호 전달 실패일 수도 있으므로 "
                            "check_14 전달 진단과 함께 읽어야 한다.")})
 
+    def check_45_run_dir_resolution(self) -> CheckResult:
+        """실행 폴더가 아닌 경로에서 **빈 보고서를 만들지 않는지** 확인한다.
+
+        사용자가 실행 폴더 대신 그 안의 ``figures`` 를 붙여넣는 일이 잦다. 그때
+        조용히 빈 보고서를 쓰지 말고, 한 단계 위를 썼다고 알리거나 무엇을 넣어야
+        하는지 말하고 멈춰야 한다.
+        """
+        tmp = Path(tempfile.mkdtemp(prefix="vcg_rundir_"))
+        obs: dict[str, Any] = {}
+        try:
+            root = tmp / "compare_x"
+            cond = root / "cond_attention_only"
+            (cond / "figures").mkdir(parents=True)
+            write_json(cond / "manifest.json", {
+                "run_id": cond.name, "status": "completed",
+                "learning": {"mode": "attention_only", "trainable": ["theta_base"]},
+                "code": {"sha256": "abc"}, "config_sha256": "def",
+                "environment": {}, "device": str(self.device),
+                "dtype": str(self.dtype),
+                "deterministic": {"status": "n/a", "note_ko": ""}})
+            # 1) figures 하위 폴더 -> 한 단계 위를 쓰고 그 사실을 알린다
+            got, note = resolve_run_dir(cond / "figures")
+            obs["subdir_resolved_to_parent"] = (got == cond)
+            obs["subdir_reported_note"] = bool(note)
+            obs["no_report_written_in_figures"] = not (
+                cond / "figures" / "report_ko.md").is_file()
+            # 2) 실행 폴더 여러 개를 담은 폴더 -> 목록을 주고 멈춘다
+            try:
+                resolve_run_dir(root)
+                obs["parent_of_runs_rejected"] = False
+            except FileNotFoundError as exc:
+                obs["parent_of_runs_rejected"] = True
+                obs["parent_message_lists_children"] = "cond_attention_only" in str(exc)
+            # 3) 관계 없는 빈 폴더 -> 빈 보고서를 만들지 않고 멈춘다
+            empty = tmp / "empty"
+            empty.mkdir()
+            try:
+                ReportBuilder(empty)
+                obs["empty_dir_rejected"] = False
+            except FileNotFoundError:
+                obs["empty_dir_rejected"] = True
+            obs["no_report_written_in_empty"] = not (empty / "report_ko.md").is_file()
+            # 4) 올바른 실행 폴더는 그대로 쓴다
+            got2, note2 = resolve_run_dir(cond)
+            obs["valid_run_dir_unchanged"] = (got2 == cond and note2 == "")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+        passed = all(bool(v) for v in obs.values())
+        return CheckResult(
+            "check_45_run_dir_resolution",
+            "실행 폴더가 아닌 경로에서 빈 보고서를 만들지 않는다",
+            STATUS_PASSED if passed else STATUS_FAILED,
+            "figures 하위 폴더는 한 단계 위로 해결하고 알린다. 실행 폴더가 아닌 "
+            "폴더는 무엇을 넣어야 하는지 말하고 멈춘다. 어느 경우에도 기록 없는 "
+            "폴더에 report_ko.md 를 쓰지 않는다",
+            obs, "임시 폴더에 만든 실행 폴더 구조 -> resolve_run_dir / ReportBuilder")
+
     def check_44_dataset_paired_and_labels(self) -> CheckResult:
         """paired 데이터의 마스크 정답과 라벨 충돌을 실제 데이터로 확인한다."""
         cfg = json.loads(json.dumps(self.tiny_cfg))
@@ -11885,6 +11993,31 @@ class KoreanMenu:
                 print(f"\n[오류] {type(exc).__name__}: {exc}")
                 traceback.print_exc(limit=3)
 
+    @staticmethod
+    def _show_recent_runs(out: Path, limit: int = 8) -> None:
+        """결과 루트 아래의 최근 실행 폴더를 보여 준다 (비교 실행의 하위 폴더 포함)."""
+        found: list[Path] = []
+        try:
+            for d in sorted(out.iterdir()):
+                if not d.is_dir():
+                    continue
+                if (d / "manifest.json").is_file():
+                    found.append(d)
+                    continue
+                for sub in sorted(d.iterdir()):
+                    if sub.is_dir() and (sub / "manifest.json").is_file():
+                        found.append(sub)
+        except OSError as exc:
+            print(f"  [알림] 결과 폴더를 읽지 못했다: {exc}")
+            return
+        if not found:
+            print(f"  [알림] {out} 아래에 아직 실행 폴더가 없다.")
+            return
+        found.sort(key=lambda d: d.stat().st_mtime, reverse=True)
+        print("  최근 실행 폴더:")
+        for d in found[:limit]:
+            print(f"    - {d}")
+
     def dispatch(self, choice: str) -> None:
         cfg = build_config(self.preset)
         out = self.output
@@ -12008,13 +12141,7 @@ class KoreanMenu:
             print(f"  예) {out / 'simulate_20260920T012345Z_ab12cd34'}")
             print("  그 폴더 안에 manifest.json, resolved_config.json, "
                   "events.h5(또는 events_chunk*.npz) 가 있다.")
-            recent = sorted((d for d in out.iterdir()
-                             if d.is_dir() and (d / "manifest.json").is_file()),
-                            key=lambda d: d.stat().st_mtime, reverse=True)[:5]
-            if recent:
-                print("  최근 실행 폴더:")
-                for d in recent:
-                    print(f"    - {d}")
+            self._show_recent_runs(out)
             rd = clean_user_path(_ask("조회할 실행 폴더"))
             nid = int(_ask("뉴런 ID", "0"))
             sample = _ask("sample_id (비우면 전체)", "")
@@ -12077,12 +12204,20 @@ class KoreanMenu:
             print(f"상태: {res['status']} / 조건 {res.get('mode')} / 판정 "
                   f"{res.get('learning_outcome', {}).get('verdict')}")
         elif choice == "9":
+            print("\n  넣을 것은 **실행 폴더**다 (그 안의 figures 폴더가 아니다).")
+            print("  메뉴 4·5·6 이 끝날 때 찍어 준 '결과: ...' 경로를 붙여넣어라.")
+            self._show_recent_runs(out)
             rd = clean_user_path(_ask("보고서를 만들 실행 폴더"))
-            path = ReportBuilder(rd).build()
+            builder = ReportBuilder(rd)
+            if builder.resolve_note:
+                print(f"  [알림] {builder.resolve_note}")
+            path = builder.build()
             print(f"보고서: {path}")
             try:
-                figs = make_figures(rd)
-                print(f"그림 {len(figs)}개: {figs}")
+                figs = make_figures(builder.dir)
+                print(f"그림 {len(figs)}개:")
+                for f in figs:
+                    print(f"    - {f}")
             except RuntimeError as exc:
                 print(f"[그림 생략] {exc}")
         elif choice == "10":
@@ -12255,11 +12390,14 @@ def run_cli(args: argparse.Namespace) -> int:
         return 2
     if args.mode == "report":
         rd = _need_run_dir(args)
-        path = ReportBuilder(rd).build()
+        builder = ReportBuilder(rd)
+        if builder.resolve_note:
+            print(f"[알림] {builder.resolve_note}")
+        path = builder.build()
         print(f"보고서: {path}")
         if args.figures:
             try:
-                print("그림:", make_figures(rd))
+                print("그림:", make_figures(builder.dir))
             except RuntimeError as exc:
                 print(f"[그림 생략] {exc}")
         return 0
