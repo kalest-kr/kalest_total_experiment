@@ -1,0 +1,9 @@
+# 파이썬 빌드 산출물
+__pycache__/
+*.pyc
+*.pyo
+
+# 실행 결과는 저장소에 넣지 않는다.
+# visual_cortex_gpu.py 는 사용자가 지정한 폴더에만 결과를 쓴다.
+runs/
+cortex_runs/
