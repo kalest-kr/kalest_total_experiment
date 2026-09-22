@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<style>
+    /*링크 가상 클래스 선택자(전체 선택자 영향 받는 중)*/
+    a:link {color: black; text-decoration: none;} 
+    a:visited {color: black;}
+    a:hover {color: cyan;}/*링크 위에서 마우스가 호버링 중일 때*/
+    a:active {background-color: darkgray;}
+</style>
+<style>
+    * {color: blue;}/*전체 선택자*/
+    p {background-color: yellow;}/*태그 선택자*/
+    .c1 {border: 1px solid red;}/*클래스 선택자*/
+    #n1 {background-color: aqua;}/*id 선택자*/
+    ul li {color: brown;}/*하위 선택자*/
+    ol>li {color: chartreuse;} /*자식 선택자*/
+</style>
+<body>
+    <h1 style="color: red;">CSS 스타일</h1>
+    <h2 class="c1">스타일 사용</h2>
+    <p>css는 디자인과 정보의 분리를 위해 사용</p>
+    <p class="c1">css는 디자인과 정보의 분리를 위해 사용</p>
+    <ul>
+        <li id="n1">html</li>
+        <li>css</li>
+        <li>js</li>
+    </ul>
+    <ol>
+        <li>html</li>
+        <li>css</li>
+        <li>js</li>
+    </ol>
+    <a href="https://www.youtube.com/watch?v=dQw4w9WgXcQ"></a>
+</body>
+</html>
