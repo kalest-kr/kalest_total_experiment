@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cortex-3x3"
+version = "0.1.0"
+description = "3x3 뉴런 기록 구조를 유지하는 망막-LGN-V1-V2-V3-V4-IT 연구용 시뮬레이터"
+readme = "README_KO.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "Pillow>=9.0",
+    "matplotlib>=3.6",
+    "h5py>=3.8",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4", "pytest-timeout>=2.1"]
+accel = ["numba>=0.58"]
+
+[project.scripts]
+cortex = "cortex.cli:main"
+
+[tool.setuptools]
+packages = ["cortex"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+    "slow: 오래 걸리는 검사 (사용자가 명시적으로 실행)",
+    "needs_h5py: h5py 설치가 필요한 검사",
+]

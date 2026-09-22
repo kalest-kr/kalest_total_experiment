@@ -1,0 +1,2 @@
+    sp = sub.add_parser("inspect-config", help="설정과 규모만 확인 (실행하지 않음)")
+    sp.add_argument("--config", required=True, help=CONFIG_HELP)

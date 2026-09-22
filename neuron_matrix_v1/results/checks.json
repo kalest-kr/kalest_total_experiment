@@ -1,0 +1,551 @@
+{
+ "generated_at_utc": "2026-09-15T03:34:05Z",
+ "elapsed_sec": 6.3288867473602295,
+ "n_checks": 10,
+ "n_passed": 10,
+ "n_failed": 0,
+ "all_passed": true,
+ "environment": {
+  "python": "3.11.15 (main, Mar  3 2026, 09:26:23) [GCC 13.3.0]",
+  "platform": "Linux-6.18.44-fc-v33-x86_64-with-glibc2.39",
+  "numpy": "2.4.6"
+ },
+ "checks": [
+  {
+   "id": "T1",
+   "title": "행렬과 자료구조",
+   "passed": true,
+   "elapsed_sec": 0.1187741756439209,
+   "assertions": [
+    {
+     "assertion": "모든 뉴런 행렬 shape == (3,3)",
+     "passed": true
+    },
+    {
+     "assertion": "모든 뉴런 행렬 dtype == float64",
+     "passed": true
+    },
+    {
+     "assertion": "상태 저장소 shape (N,3,3)",
+     "passed": true
+    },
+    {
+     "assertion": "threshold 속성 쓰기가 행렬 (1,1) 에 반영",
+     "passed": true
+    },
+    {
+     "assertion": "행렬 (1,1) 쓰기가 threshold 속성에 반영",
+     "passed": true
+    },
+    {
+     "assertion": "P 속성 <-> 행렬 (1,2)",
+     "passed": true
+    },
+    {
+     "assertion": "E/I/b/u 속성 <-> 행렬 (2,0)/(2,1)/(2,2)/(1,0)",
+     "passed": true
+    },
+    {
+     "assertion": "위치 <-> 행렬 0행",
+     "passed": true
+    },
+    {
+     "assertion": "상태 배열에 객체 dtype 이 없다",
+     "passed": true
+    },
+    {
+     "assertion": "fired 는 행렬 셀이 아니라 메타데이터",
+     "passed": true
+    },
+    {
+     "assertion": "음수 가중치 거부",
+     "passed": true
+    },
+    {
+     "assertion": "잘못된 pre_id 거부",
+     "passed": true
+    },
+    {
+     "assertion": "잘못된 post_id 거부",
+     "passed": true
+    },
+    {
+     "assertion": "잘못된 연결 종류 거부",
+     "passed": true
+    },
+    {
+     "assertion": "delay_ticks=0 거부",
+     "passed": true
+    },
+    {
+     "assertion": "delay_ticks=-1 거부",
+     "passed": true
+    },
+    {
+     "assertion": "같은 pre/post 사이 복수 연결의 ID 가 독립적",
+     "passed": true
+    }
+   ],
+   "detail": {},
+   "error": null
+  },
+  {
+   "id": "T2",
+   "title": "수치 재구성",
+   "passed": true,
+   "elapsed_sec": 0.16187071800231934,
+   "assertions": [
+    {
+     "assertion": "E == 0.8 (관측 0.8)",
+     "passed": true
+    },
+    {
+     "assertion": "I == 0.6 (관측 0.6)",
+     "passed": true
+    },
+    {
+     "assertion": "u == 0.2 (관측 0.20000000000000007)",
+     "passed": true
+    },
+    {
+     "assertion": "q == 0 (관측 0)",
+     "passed": true
+    },
+    {
+     "assertion": "저장한 연결 기여 합 == 저장한 E",
+     "passed": true
+    },
+    {
+     "assertion": "저장한 연결 기여 합 == 저장한 I",
+     "passed": true
+    },
+    {
+     "assertion": "재구성한 u == 저장한 u",
+     "passed": true
+    },
+    {
+     "assertion": "도착 연결 3개 기록",
+     "passed": true
+    },
+    {
+     "assertion": "V1 L2 뉴런에서도 기여 합 == 저장한 E/I",
+     "passed": true
+    }
+   ],
+   "detail": {
+    "abcd": {
+     "E": 0.8,
+     "I": 0.6,
+     "u": 0.20000000000000007,
+     "q": 0
+    }
+   },
+   "error": null
+  },
+  {
+   "id": "T3",
+   "title": "전달 계수와 지연",
+   "passed": true,
+   "elapsed_sec": 0.1731853485107422,
+   "assertions": [
+    {
+     "assertion": "E == P*weight == 2.0*0.5 == 1.0 (관측 1.0); 수신 측에서 P 를 다시 곱하지 않음",
+     "passed": true
+    },
+    {
+     "assertion": "복수 연결·복수 도착 이벤트 합산 == 1.0 (관측 1.0)",
+     "passed": true
+    },
+    {
+     "assertion": "L4->L2 직접 흥분은 tick 2 에만 도착",
+     "passed": true
+    },
+    {
+     "assertion": "억제 중계->L2 도 tick 2 에 도착",
+     "passed": true
+    },
+    {
+     "assertion": "L4->억제 중계는 tick 1 에 도착",
+     "passed": true
+    },
+    {
+     "assertion": "L4 는 관찰 tick 0 에서 발화한다 (n=37)",
+     "passed": true
+    },
+    {
+     "assertion": "마지막 tick 에서 L4 q 는 0 으로 돌아온다 (n=0) -> 마지막 q 로 앞층을 읽으면 안 된다",
+     "passed": true
+    }
+   ],
+   "detail": {
+    "detail": {
+     "n_l4_fired_tick0": 37,
+     "n_l4_fired_last_tick": 0
+    }
+   },
+   "error": null
+  },
+  {
+   "id": "T4",
+   "title": "동기식 실행과 초기화",
+   "passed": true,
+   "elapsed_sec": 0.34344959259033203,
+   "assertions": [
+    {
+     "assertion": "뉴런 등록 순서를 바꿔도 결과가 비트 단위로 같다 (0.6400000000000001 vs 0.6400000000000001)",
+     "passed": true
+    },
+    {
+     "assertion": "같은 초기 상태·입력의 재실행 결과가 동일",
+     "passed": true
+    },
+    {
+     "assertion": "다른 영상을 실행한 뒤에도 같은 영상의 반응이 동일 (상태 누출 없음)",
+     "passed": true
+    },
+    {
+     "assertion": "버퍼 상태 점검 수행",
+     "passed": true
+    },
+    {
+     "assertion": "초기화 후 E/I/u/fired 가 0",
+     "passed": true
+    },
+    {
+     "assertion": "초기화 후 b == b_base",
+     "passed": true
+    },
+    {
+     "assertion": "초기화 후 이벤트 큐와 외부 자극 버퍼가 비어 있음",
+     "passed": true
+    },
+    {
+     "assertion": "reset_transient_state 가 학습 가중치를 보존",
+     "passed": true
+    },
+    {
+     "assertion": "reset_parameters 는 가중치를 구성 직후 값으로 되돌림",
+     "passed": true
+    },
+    {
+     "assertion": "event_mode='object' 참조 경로와 'bulk' 벡터 경로의 결과가 동일",
+     "passed": true
+    }
+   ],
+   "detail": {},
+   "error": null
+  },
+  {
+   "id": "T5",
+   "title": "학습 부호와 0교정",
+   "passed": true,
+   "elapsed_sec": 0.16618037223815918,
+   "assertions": [
+    {
+     "assertion": "d=+1: 활성 흥분 연결 강화",
+     "passed": true
+    },
+    {
+     "assertion": "d=+1: 활성 억제 연결 약화",
+     "passed": true
+    },
+    {
+     "assertion": "입력이 0 인 연결의 G == 0 (변화 없음)",
+     "passed": true
+    },
+    {
+     "assertion": "입력 0 연결의 원래 G 도 정확히 0",
+     "passed": true
+    },
+    {
+     "assertion": "d=-1: 활성 흥분 연결 약화",
+     "passed": true
+    },
+    {
+     "assertion": "d=-1: 활성 억제 연결 강화",
+     "passed": true
+    },
+    {
+     "assertion": "d=0: 모든 G 가 정확히 0",
+     "passed": true
+    },
+    {
+     "assertion": "d=0: 가중치가 비트 단위로 보존 (감쇠 없음)",
+     "passed": true
+    },
+    {
+     "assertion": "d=0: 가중치 버전 변경 없음",
+     "passed": true
+    },
+    {
+     "assertion": "clipping 후에도 가중치가 [0,1] 안에 있고 부호(연결 종류)는 그대로",
+     "passed": true
+    },
+    {
+     "assertion": "clipping 이 kind 를 바꾸지 않음",
+     "passed": true
+    },
+    {
+     "assertion": "벡터 갱신 == 뉴런별 순수 국소 함수 결과",
+     "passed": true
+    },
+    {
+     "assertion": "error_override_zeros=True 면 교정값이 모두 0",
+     "passed": true
+    },
+    {
+     "assertion": "error_override_zeros=True 면 학습용 d 도 모두 0",
+     "passed": true
+    },
+    {
+     "assertion": "0교정 유도 실행의 활동과 상태가 자유 실행과 비트 단위로 동일",
+     "passed": true
+    },
+    {
+     "assertion": "0교정에서 교사 유래 G 가 0 이고 가중치가 비트 단위로 보존",
+     "passed": true
+    }
+   ],
+   "detail": {},
+   "error": null
+  },
+  {
+   "id": "T6",
+   "title": "작은 실현 가능한 학습 예제",
+   "passed": true,
+   "elapsed_sec": 0.0021355152130126953,
+   "assertions": [
+    {
+     "assertion": "작은 문제를 6 반복 안에 해결",
+     "passed": true
+    },
+    {
+     "assertion": "교사 제거·일시 상태 초기화 후에도 결과 유지 (출력 [1, 0])",
+     "passed": true
+    },
+    {
+     "assertion": "흥분 가중치가 임계값을 넘도록 학습됨 (0.600)",
+     "passed": true
+    }
+   ],
+   "detail": {
+    "detail": {
+     "iterations": 6,
+     "w_exc": 0.5999999950000001,
+     "w_inh": 0.1,
+     "note_ko": "이 작은 예제의 성공은 실제 영상 과제의 성공이 아니다."
+    }
+   },
+   "error": null
+  },
+  {
+   "id": "T7",
+   "title": "측정의 비침습성",
+   "passed": true,
+   "elapsed_sec": 0.58048415184021,
+   "assertions": [
+    {
+     "assertion": "진단 on/off 로 동일 학습을 실행했을 때 가중치가 비트 단위로 동일",
+     "passed": true
+    },
+    {
+     "assertion": "반사실 개입 후 가중치 보존",
+     "passed": true
+    },
+    {
+     "assertion": "반사실 개입 후 weight_version 보존",
+     "passed": true
+    },
+    {
+     "assertion": "상태 행렬 복원 확인 수행",
+     "passed": true
+    },
+    {
+     "assertion": "진단이 난수 스트림 상태를 바꾸지 않음",
+     "passed": true
+    },
+    {
+     "assertion": "무개입 재실행이 저장된 반응과 일치 (개입 결과 해석 전제 조건)",
+     "passed": true
+    },
+    {
+     "assertion": "진단 후 threshold/P 보존",
+     "passed": true
+    }
+   ],
+   "detail": {
+    "counterfactual_n_changed": 1
+   },
+   "error": null
+  },
+  {
+   "id": "T8",
+   "title": "교사와 데이터 분리",
+   "passed": true,
+   "elapsed_sec": 0.6082010269165039,
+   "assertions": [
+    {
+     "assertion": "라벨만 바꿔도 전처리 결과가 비트 단위로 동일",
+     "passed": true
+    },
+    {
+     "assertion": "라벨만 바꿔도 감각 입력이 동일",
+     "passed": true
+    },
+    {
+     "assertion": "라벨만 바꿔도 학습 전 자유 실행 출력이 동일",
+     "passed": true
+    },
+    {
+     "assertion": "다른 라벨은 목표 지도만 바꾼다",
+     "passed": true
+    },
+    {
+     "assertion": "다른 목표는 교정값을 바꾼다",
+     "passed": true
+    },
+    {
+     "assertion": "훈련·검증·시험·추가시험의 scene_id 가 겹치지 않음",
+     "passed": true
+    },
+    {
+     "assertion": "같은 기초 장면이 여러 분할에 나뉘지 않음",
+     "passed": true
+    },
+    {
+     "assertion": "대조군 사이 초기 가중치가 동일",
+     "passed": true
+    },
+    {
+     "assertion": "대조군 사이 표본 순서가 동일",
+     "passed": true
+    }
+   ],
+   "detail": {},
+   "error": null
+  },
+  {
+   "id": "T9",
+   "title": "모델 저장·복원",
+   "passed": true,
+   "elapsed_sec": 0.530022382736206,
+   "assertions": [
+    {
+     "assertion": "복원 후 가중치 일치",
+     "passed": true
+    },
+    {
+     "assertion": "복원 후 연결 구조 일치",
+     "passed": true
+    },
+    {
+     "assertion": "복원 후 뉴런 고정값(threshold/P/위치) 일치",
+     "passed": true
+    },
+    {
+     "assertion": "복원 후 전처리 정규화 계수 일치",
+     "passed": true
+    },
+    {
+     "assertion": "복원 후 수용장 설정 일치",
+     "passed": true
+    },
+    {
+     "assertion": "복원 후 교사 없는 예측이 일치",
+     "passed": true
+    }
+   ],
+   "detail": {
+    "files": {
+     "json": "/home/user/kalest_web_dev_practice/neuron_matrix_v1/results/checks/t9_model.json",
+     "npz": "/home/user/kalest_web_dev_practice/neuron_matrix_v1/results/checks/t9_model.npz",
+     "json_sha256": "0e59a6dd45e540c5790d0e3523e7632088db103e11ccfb554d30bb7578b89a98",
+     "npz_sha256": "9fa7a8eb8729aab4b583eafb756f0c97bb028824461df60fd9d8d6a68708891d"
+    }
+   },
+   "error": null
+  },
+  {
+   "id": "T10",
+   "title": "입력 규모",
+   "passed": true,
+   "elapsed_sec": 3.6431288719177246,
+   "assertions": [
+    {
+     "assertion": "64x64: 출력 shape == (128,)",
+     "passed": true
+    },
+    {
+     "assertion": "64x64: 출력이 모두 유한값",
+     "passed": true
+    },
+    {
+     "assertion": "64x64: ON/OFF 비음수",
+     "passed": true
+    },
+    {
+     "assertion": "64x64: 격자 좌표가 영상 범위 안",
+     "passed": true
+    },
+    {
+     "assertion": "64x64: 유효 시야 마스크가 영상 일부만 덮음 (모서리 제외)",
+     "passed": true
+    },
+    {
+     "assertion": "1000x1000: 출력 shape == (128,)",
+     "passed": true
+    },
+    {
+     "assertion": "1000x1000: 출력이 모두 유한값",
+     "passed": true
+    },
+    {
+     "assertion": "1000x1000: ON/OFF 비음수",
+     "passed": true
+    },
+    {
+     "assertion": "1000x1000: 격자 좌표가 영상 범위 안",
+     "passed": true
+    },
+    {
+     "assertion": "1000x1000: 유효 시야 마스크가 영상 일부만 덮음 (모서리 제외)",
+     "passed": true
+    }
+   ],
+   "detail": {
+    "detail": {
+     "64x64": {
+      "height": 64,
+      "width": 64,
+      "R": 31.5,
+      "n_points": 128,
+      "valid_fov_pixels": 3096,
+      "valid_fov_fraction": 0.755859375,
+      "sigma_pool_min": 0.5,
+      "sigma_pool_max": 5.122659728114653,
+      "rf_radius_max_px": 10.245319456229305,
+      "time_render_sec": 0.0006606578826904297,
+      "time_encode_sec": 0.0003345012664794922,
+      "time_sample_sec": 0.002037525177001953
+     },
+     "1000x1000": {
+      "height": 1000,
+      "width": 1000,
+      "R": 499.5,
+      "n_points": 128,
+      "valid_fov_pixels": 783764,
+      "valid_fov_fraction": 0.783764,
+      "sigma_pool_min": 0.9948264485611262,
+      "sigma_pool_max": 125.04984188305367,
+      "rf_radius_max_px": 250.09968376610735,
+      "time_render_sec": 0.3093843460083008,
+      "time_encode_sec": 0.04852747917175293,
+      "time_sample_sec": 3.263638973236084
+     },
+     "note_ko": "1000x1000 입력을 같은 전처리 API 로 처리했다. 이것은 입력 처리 시간이며 100만 뉴런 규모의 학습을 수행한 것이 아니다. 학습은 64x64 / 1024 뉴런 회로에서만 했다."
+    }
+   },
+   "error": null
+  }
+ ]
+}

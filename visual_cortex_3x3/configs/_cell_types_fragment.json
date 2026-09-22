@@ -1,0 +1,63 @@
+{
+  "_comment_ko": "이 파일은 참고용 조각이다. 실제 설정 파일들은 아래 cell_types 블록을 각자 포함한다. 값은 모형 파라미터이며 특정 실험의 측정값이 아니다 (BIOLOGY_AND_ASSUMPTIONS.md 참조).",
+  "cell_types": {
+    "retinal_ganglion": {
+      "dale": "excitatory", "compartments": ["soma"],
+      "C_pF": {"soma": 80.0, "basal": 100.0, "apical": 100.0},
+      "gL_nS": {"soma": 6.0, "basal": 5.0, "apical": 5.0},
+      "EL_mV": {"soma": -65.0, "basal": -70.0, "apical": -70.0},
+      "V_th_mV": -50.0, "V_reset_mV": -62.0, "t_ref_ms": 1.5,
+      "target_rate_hz": 10.0, "sum_threshold_theta": 0.5
+    },
+    "lgn_relay": {
+      "dale": "excitatory", "compartments": ["soma"],
+      "C_pF": {"soma": 100.0, "basal": 100.0, "apical": 100.0},
+      "gL_nS": {"soma": 7.0, "basal": 5.0, "apical": 5.0},
+      "EL_mV": {"soma": -68.0, "basal": -70.0, "apical": -70.0},
+      "V_th_mV": -50.0, "V_reset_mV": -63.0, "t_ref_ms": 2.0,
+      "target_rate_hz": 8.0, "sum_threshold_theta": 0.6
+    },
+    "spiny_stellate": {
+      "dale": "excitatory", "compartments": ["soma", "basal"],
+      "C_pF": {"soma": 150.0, "basal": 90.0, "apical": 90.0},
+      "gL_nS": {"soma": 8.0, "basal": 5.0, "apical": 5.0},
+      "EL_mV": {"soma": -70.0, "basal": -70.0, "apical": -70.0},
+      "g_couple_nS": {"soma_basal": 10.0, "soma_apical": 0.0},
+      "V_th_mV": -50.0, "V_reset_mV": -65.0, "t_ref_ms": 2.0,
+      "target_rate_hz": 5.0, "sum_threshold_theta": 1.0
+    },
+    "pyramidal": {
+      "dale": "excitatory", "compartments": ["soma", "basal", "apical"],
+      "C_pF": {"soma": 200.0, "basal": 120.0, "apical": 120.0},
+      "gL_nS": {"soma": 10.0, "basal": 6.0, "apical": 6.0},
+      "EL_mV": {"soma": -70.0, "basal": -70.0, "apical": -70.0},
+      "g_couple_nS": {"soma_basal": 9.0, "soma_apical": 4.0},
+      "V_th_mV": -50.0, "V_reset_mV": -65.0, "t_ref_ms": 2.5,
+      "target_rate_hz": 4.0, "sum_threshold_theta": 1.0
+    },
+    "pv_basket": {
+      "dale": "inhibitory", "compartments": ["soma"],
+      "C_pF": {"soma": 100.0, "basal": 80.0, "apical": 80.0},
+      "gL_nS": {"soma": 10.0, "basal": 5.0, "apical": 5.0},
+      "EL_mV": {"soma": -65.0, "basal": -70.0, "apical": -70.0},
+      "V_th_mV": -48.0, "V_reset_mV": -60.0, "t_ref_ms": 1.0,
+      "target_rate_hz": 12.0, "sum_threshold_theta": 0.8
+    },
+    "sst_martinotti": {
+      "dale": "inhibitory", "compartments": ["soma"],
+      "C_pF": {"soma": 110.0, "basal": 80.0, "apical": 80.0},
+      "gL_nS": {"soma": 8.0, "basal": 5.0, "apical": 5.0},
+      "EL_mV": {"soma": -66.0, "basal": -70.0, "apical": -70.0},
+      "V_th_mV": -50.0, "V_reset_mV": -62.0, "t_ref_ms": 2.0,
+      "target_rate_hz": 6.0, "sum_threshold_theta": 0.9
+    },
+    "l1_inhibitory": {
+      "dale": "inhibitory", "compartments": ["soma"],
+      "C_pF": {"soma": 90.0, "basal": 80.0, "apical": 80.0},
+      "gL_nS": {"soma": 8.0, "basal": 5.0, "apical": 5.0},
+      "EL_mV": {"soma": -66.0, "basal": -70.0, "apical": -70.0},
+      "V_th_mV": -50.0, "V_reset_mV": -62.0, "t_ref_ms": 2.0,
+      "target_rate_hz": 5.0, "sum_threshold_theta": 0.9
+    }
+  }
+}

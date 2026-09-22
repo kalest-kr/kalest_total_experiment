@@ -1,0 +1,34 @@
+==============================================================================
+프로필=main  시드=[42, 43, 44, 45, 46]  에폭=25  조건=['frozen', 'correction_only', 'local_learning', 'shuffled_teacher']
+학습률 탐색=OFF (고정 0.05)
+출력 디렉터리: /home/user/kalest_web_dev_practice/neuron_matrix_v1/results/main
+==============================================================================
+  frozen            seed=42  test bacc=0.5004  F1=0.0016  (2.4s)
+  frozen            seed=43  test bacc=0.5011  F1=0.005  (2.6s)
+  frozen            seed=44  test bacc=0.5025  F1=0.0108  (2.4s)
+  frozen            seed=45  test bacc=0.5021  F1=0.0102  (2.4s)
+  frozen            seed=46  test bacc=0.5009  F1=0.0047  (2.4s)
+  correction_only   seed=42  test bacc=0.5004  F1=0.0016  (16.8s)
+  correction_only   seed=43  test bacc=0.5011  F1=0.005  (16.8s)
+  correction_only   seed=44  test bacc=0.5025  F1=0.0108  (16.7s)
+  correction_only   seed=45  test bacc=0.5021  F1=0.0102  (16.9s)
+  correction_only   seed=46  test bacc=0.5009  F1=0.0047  (16.7s)
+  local_learning    seed=42  test bacc=0.7729  F1=0.557  (11.9s)
+  local_learning    seed=43  test bacc=0.7772  F1=0.6056  (11.9s)
+  local_learning    seed=44  test bacc=0.8012  F1=0.6124  (11.8s)
+  local_learning    seed=45  test bacc=0.7684  F1=0.5704  (12.0s)
+  local_learning    seed=46  test bacc=0.7708  F1=0.5663  (11.8s)
+  shuffled_teacher  seed=42  test bacc=0.5167  F1=0.0623  (11.6s)
+  shuffled_teacher  seed=43  test bacc=0.5273  F1=0.0881  (11.6s)
+  shuffled_teacher  seed=44  test bacc=0.5147  F1=0.0557  (11.8s)
+  shuffled_teacher  seed=45  test bacc=0.5310  F1=0.0966  (12.3s)
+  shuffled_teacher  seed=46  test bacc=0.5188  F1=0.0685  (11.8s)
+
+==============================================================================
+frozen             test bacc 0.5014 ± 0.0009   F1 0.0065
+correction_only    test bacc 0.5014 ± 0.0009   F1 0.0065
+local_learning     test bacc 0.7781 ± 0.0133   F1 0.5823
+shuffled_teacher   test bacc 0.5217 ± 0.0071   F1 0.0742
+
+총 소요 216.8s · 요약 /home/user/kalest_web_dev_practice/neuron_matrix_v1/results/main/run_summary.json
+==============================================================================

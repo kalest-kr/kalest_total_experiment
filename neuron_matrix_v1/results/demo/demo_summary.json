@@ -1,0 +1,109 @@
+{
+ "model": "results/quick/models/local_learning_seed42",
+ "scenarios": [
+  {
+   "scenario": "h_center_mid",
+   "orientation_deg": 0.0,
+   "contrast": 0.35,
+   "center_frac": [
+    0.0,
+    0.0
+   ],
+   "n_l2_fired": 13,
+   "n_l2_fired_ori0": 6,
+   "n_l2_fired_ori90": 7,
+   "n_l3_fired": 3,
+   "n_l4_fired": 148,
+   "n_target_positive": 44
+  },
+  {
+   "scenario": "v_center_mid",
+   "orientation_deg": 90.0,
+   "contrast": 0.35,
+   "center_frac": [
+    0.0,
+    0.0
+   ],
+   "n_l2_fired": 23,
+   "n_l2_fired_ori0": 9,
+   "n_l2_fired_ori90": 14,
+   "n_l3_fired": 17,
+   "n_l4_fired": 148,
+   "n_target_positive": 44
+  },
+  {
+   "scenario": "h_offset_hi",
+   "orientation_deg": 0.0,
+   "contrast": 0.45,
+   "center_frac": [
+    0.25,
+    -0.45
+   ],
+   "n_l2_fired": 7,
+   "n_l2_fired_ori0": 6,
+   "n_l2_fired_ori90": 1,
+   "n_l3_fired": 4,
+   "n_l4_fired": 38,
+   "n_target_positive": 5
+  },
+  {
+   "scenario": "v_offset_lo",
+   "orientation_deg": 90.0,
+   "contrast": 0.25,
+   "center_frac": [
+    -0.35,
+    0.2
+   ],
+   "n_l2_fired": 7,
+   "n_l2_fired_ori0": 0,
+   "n_l2_fired_ori90": 7,
+   "n_l3_fired": 7,
+   "n_l4_fired": 41,
+   "n_target_positive": 7
+  },
+  {
+   "inspected_neuron": "L2/ori0/k4/j0",
+   "observed": {
+    "trial_id": "demo/diag",
+    "neuron_id": 768,
+    "neuron_name": "L2/ori0/k4/j0",
+    "tick": 2,
+    "phase": "free",
+    "weight_version": 917,
+    "n_arriving_connections": 54,
+    "external_sensory_drive": 0.0,
+    "E": 1.5531909533038055,
+    "I": 1.1257881319726328,
+    "b_base": 0.0,
+    "correction_input": 0.0,
+    "u": 0.4274028213311727,
+    "threshold": 0.5,
+    "q": 0,
+    "top_contributions": 8
+   },
+   "hypotheses": [
+    "높은 임계값: u>0 이지만 threshold 를 넘지 못했다"
+   ],
+   "reconstruction_check": {
+    "E_from_contributions": 1.5531909533038057,
+    "I_from_contributions": 1.1257881319726324,
+    "u_from_contributions": 0.42740282133117335,
+    "matches_recorded_E": true,
+    "matches_recorded_I": true,
+    "matches_recorded_u": true
+   }
+  }
+ ],
+ "figures": [
+  "/home/user/kalest_web_dev_practice/neuron_matrix_v1/results/demo/demo_h_center_mid.png",
+  "/home/user/kalest_web_dev_practice/neuron_matrix_v1/results/demo/demo_h_center_mid_input.png",
+  "/home/user/kalest_web_dev_practice/neuron_matrix_v1/results/demo/demo_v_center_mid.png",
+  "/home/user/kalest_web_dev_practice/neuron_matrix_v1/results/demo/demo_v_center_mid_input.png",
+  "/home/user/kalest_web_dev_practice/neuron_matrix_v1/results/demo/demo_h_offset_hi.png",
+  "/home/user/kalest_web_dev_practice/neuron_matrix_v1/results/demo/demo_h_offset_hi_input.png",
+  "/home/user/kalest_web_dev_practice/neuron_matrix_v1/results/demo/demo_v_offset_lo.png",
+  "/home/user/kalest_web_dev_practice/neuron_matrix_v1/results/demo/demo_v_offset_lo_input.png",
+  "/home/user/kalest_web_dev_practice/neuron_matrix_v1/results/demo/demo_neuron_state.png"
+ ],
+ "note_ko": "교사 목표는 표시용이며 학생의 자유 추론에 들어가지 않는다."
+}
