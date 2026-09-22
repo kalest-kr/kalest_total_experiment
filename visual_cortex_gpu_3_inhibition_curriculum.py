@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""visual_cortex_gpu.py -- 초기 임계값 15 에서 L2/L3 임계값을 학습하는 GPU 시각피질 모형.
+"""visual_cortex_gpu_3_inhibition_curriculum.py -- 약한 억제로 시작해 점진적으로 복원하는 실험.
 
 상위(IT)에서 만든 목표를 영역별 역방향 변환으로 내려보내고, L5 가 오류 위치를,
 L6 가 과잉·부족을 정하면, 하위 영역 L1 이 그 정보로 L2/L3 흥분성 뉴런의 발화
@@ -11,14 +11,48 @@ L6 가 과잉·부족을 정하면, 하위 영역 L1 이 그 정보로 L2/L3 흥
 단계, 임계값 학습, 대조군, 기록, 재개, 검증, 보고서, 한국어 메뉴가 모두 이 안에
 있다.
 
+이 파일은 ``visual_cortex_gpu_2_fixed.py`` (버전 2.0.2, SHA-256
+``35f500331683856495a491454a565de9c108690ee28fd7b4bdae45365b3a268d``) 를 실제로
+읽고 해시·버전을 확인한 뒤 수정한 것이다. 기존 구조·사용법·기록 기능을 모두
+보존하면서 억제 점진 복원 실험을 추가했다.
+
+검사하려는 가설
+---------------
+처음에는 억제성 뉴런의 **출력 효과**를 매우 약하게 하여 감각 신호가 IT 까지
+전달될 기회를 주고, 이후 억제를 원래 수준으로 천천히 복원하면서 기존 L5/L6/L1
+교정 및 L2/L3 흥분성 임계값 학습이 정보 전달과 분류 성능을 유지하도록 할 수
+있는가?
+
+**성공을 전제하지 않는다.** 모든 뉴런이 동시에 발화하는 것이 목표가 아니다.
+입력에 따라 서로 다른 활동이 생기고, 무입력 반응과 과도한 포화가 통제되며,
+원래 억제 수준에서도 정보를 전달하는지가 목표다. 이 절차를 실제 뇌 발달 기제의
+재현이라고 주장하지 않는다.
+
+억제 배율 (``inhibition_gain``)
+-------------------------------
+``gain_i = inhibition_gain if dale_i < 0 else 1.0``,
+``q_emit_i = P_i * s_i * gain_i``.
+
+* 주의 매개변수 ``alpha_att`` 와 **다른 변수**다.
+* 배율은 **발신 시점에 딱 한 번** 곱해 지연 ring 에 저장한다. 도착 시 다시 곱하지
+  않으므로 지연 중인 신호는 발신 당시 배율을 유지한다.
+* 억제성 세포를 삭제하거나 발화를 강제로 0 으로 만들지 않는다. 배율 0 에서도
+  세포는 발화하며 전달 효과만 0 이다.
+* 흥분성->억제성 AMPA 입력, 누설·구획 결합 전도도, 외생 감각 입력은 배율 대상이
+  아니다. ``w0_nS`` 는 비음수·불변이고 역전위도 바꾸지 않는다.
+* 배율을 바꿔도 초기 전도도 보정(``WEIGHT_CALIBRATION_THRESHOLD``)을 다시 하지
+  않는다.
+* 기존 실행 모드는 배율 1.0 이라 동작이 그대로 보존된다 (1.0 은 IEEE754 에서
+  정확한 항등 곱이다).
+
 실행
 ----
-    python visual_cortex_gpu.py                      # 한국어 메뉴
-    python visual_cortex_gpu.py --mode validate --preset v1_small --device cpu --output "D:\\CortexResults"
-    python visual_cortex_gpu.py --mode diagnose --preset hierarchy_small --device cuda --output "D:\\CortexResults"
-    python visual_cortex_gpu.py --mode train    --preset hierarchy_small --train-mode proposed_local_threshold --device cuda --output "D:\\CortexResults"
-    python visual_cortex_gpu.py --mode resume   --run-dir "D:\\CortexResults\\train_..."
-    python visual_cortex_gpu.py --mode report   --run-dir "D:\\CortexResults\\train_..." --figures
+    python visual_cortex_gpu_2_fixed.py                      # 한국어 메뉴
+    python visual_cortex_gpu_2_fixed.py --mode validate --preset v1_small --device cpu --output "D:\\CortexResults"
+    python visual_cortex_gpu_2_fixed.py --mode diagnose --preset hierarchy_small --device cuda --output "D:\\CortexResults"
+    python visual_cortex_gpu_2_fixed.py --mode train    --preset hierarchy_small --train-mode proposed_local_threshold --device cuda --output "D:\\CortexResults"
+    python visual_cortex_gpu_2_fixed.py --mode resume   --run-dir "D:\\CortexResults\\train_..."
+    python visual_cortex_gpu_2_fixed.py --mode report   --run-dir "D:\\CortexResults\\train_..." --figures
 
 필요한 패키지
 -------------
@@ -32,8 +66,8 @@ https://pytorch.org/get-started/locally/
 
 이 모형의 계산상 가정 (생물학적 측정값이 아니다)
 ------------------------------------------------
-* 모든 모델 뉴런의 발화 임계값은 **정확히 15.0 에서 출발**한다. 15 는 휴지막전위
-  대비 15 mV 탈분극에 해당하는 정규화 판정값이다
+* 모든 모델 뉴런의 발화 임계값은 **정확히 10.0 에서 출발**한다. 10 은 휴지막전위
+  대비 10 mV 탈분극에 해당하는 정규화 판정값이다
   (``u = (V_soma - E_L_soma) / V_unit``, ``V_unit = 1 mV``).
 * **이번 기본 조건에서 학습하는 값은 L2/L3 흥분성 피라미드 뉴런의 ``theta_base``
   뿐이다.** 시냅스 크기 w0, 출력 이득 P, 지도, 지연, 막 파라미터, 분류기 C,
@@ -68,6 +102,35 @@ https://pytorch.org/get-started/locally/
     t_n+1 에 배정. 지연·불응·로그·GPU/CPU 참조가 모두 이 규칙을 쓴다.
     물리 시간 스텝 ``t`` 와 correction round ``k`` 는 다른 축이다.
 
+2.0.2 변경 사항
+---------------
+* 모든 뉴런의 초기 발화 임계값은 10 mV다. L2/L3 흥분성 임계값 학습,
+  학습 경계 5~30 mV, 빠른 교정 범위 3 mV는 유지한다.
+* 초기 w0 보정 기준은 WEIGHT_CALIBRATION_THRESHOLD=15 mV로 분리했다.
+  같은 시드·설정에서는 초기 배선·연결 강도·세포 파라미터를 보존한다.
+* 메뉴·결과 경로 입력 방식은 같다. 기존 15 mV 실행의 체크포인트를 재개하면
+  10 mV 신규 조건이 되지 않으므로 새 결과 폴더에서 메뉴 3 진단부터 실행한다.
+* 실제 전달 개선 및 학습 효과는 아직 측정하지 않았다. 작성 환경에서는
+  문법·설정·초기 가중치 보정의 수치 일치만 확인하고 실험은 실행하지 않았다.
+
+2.0.1에서 도입한 수정 범위와 재실행 순서
+-----------------------------
+* 메뉴 번호·경로 입력·단일 파일 사용 방식은 유지한다. 새 결과 폴더를 사용한다.
+* 메뉴 3은 Retina/LGN/V1 뿐 아니라 설정된 모든 피질 영역의 L4 흥분성 세포와
+  L2/L3 피라미드 출력까지 검사한다. 2.0.0의 chain_transmits=True를 전체 전달
+  성공으로 해석하지 않는다. 층별 최대 탈분극·기저 입력·발화를 함께 기록한다.
+* 진단은 살아 있는 모델의 막전위·지연 버퍼·현재 출력 이득·RNG를 보존한다.
+* legacy SPSA 검사는 legacy 설정을 명시한다. 준비가 실패하면 재개 검사는
+  '미실행'으로 기록하며, 이것을 통과나 학습 결과로 집계하지 않는다.
+* 체크포인트 검색에서 preparation_state.json을 제외한다. 외부 PNG 추론은
+  정답 라벨 없이 실행하며 저장된 정규화와 준비 산출물을 검증하여 복원한다.
+* initial_state는 실행 전 적용하는 초기 막 상태다. 과거의 지연 ring과 시계를
+  잇는 중간 시점 재개 기능은 아니다. 이전처럼 실행 후 결과를 덮어쓰지 않는다.
+* 2.0.1에서는 임계값 초기값 15, 기존 연결 강도·세포 파라미터를 유지했다. 신호 부족이
+  해결됐다고 주장하지 않는다. 먼저 메뉴 3에서 전체 경로의 신호를 확인한다.
+* 이 수정본 작성 환경에는 PyTorch/CUDA가 없어 GPU 엔진 검증·학습·성능 실험을
+  실행하지 않았다. 문법, 순수 수치·파일 처리·격리 로직 검사만 별도 확인한다.
+
 import 부작용
 -------------
 이 파일을 import 하는 것만으로는 메뉴, GPU 초기화, 자료 생성, 파일 쓰기가
@@ -96,7 +159,7 @@ from typing import Any, Callable, Sequence
 
 import numpy as np
 
-__version__ = "2.0.0"
+__version__ = "3.0.0"
 
 # ----------------------------------------------------------------------
 # 선택/필수 라이브러리: import 실패를 조용히 넘기지 않고 사유를 보관한다.
@@ -164,8 +227,12 @@ def require_pillow() -> "Any":
 #: 발화 판정 임계값의 **초기값**. 모든 뉴런이 여기서 출발한다.
 #: 이번 기본 조건에서는 L2/L3 흥분성 피라미드 뉴런의 임계값을 여기서부터 학습한다
 #: (``proposed_local_threshold``). 임계값 고정은 ``frozen_threshold`` 대조군이다.
-THRESHOLD: float = 15.0
+THRESHOLD: float = 10.0
 THETA0: float = THRESHOLD
+
+#: 초기 연결 강도는 2.0.1과 같은 기준으로 생성한다. 발화 판정에는 쓰지 않는다.
+#: 임계값을 낮추면서 초기 w0까지 낮아지는 교란을 막기 위한 독립 상수다.
+WEIGHT_CALIBRATION_THRESHOLD: float = 15.0
 
 #: 임계값 학습의 경계. 모두 mV 단위이며 모델 선택이다 (최적값이 아니다).
 THETA_MIN: float = 5.0
@@ -173,8 +240,49 @@ THETA_MAX: float = 30.0
 FAST_BOUND: float = 3.0
 
 #: 판정값 u 의 전압 환산 단위 [mV]. 전체 실행에서 고정이며 학습하지 않는다.
-#: ``V_relative = V_soma - E_L`` 이므로 E_L = -65 mV 면 초기 절대 발화점은 -50 mV 다.
+#: ``V_relative = V_soma - E_L`` 이므로 E_L = -65 mV 면 초기 절대 발화점은 -55 mV 다.
 V_UNIT_MV: float = 1.0
+
+# ---- 억제 점진 복원 실험 (inhibition curriculum) ----------------------
+#: 억제성 뉴런의 **출력 효과** 배율. 1.0 이 원래 억제, 0.0 이 전달 효과를 끈
+#: 경계 조건이다. 기존 주의 매개변수 ``alpha_att`` 와 **다른 변수**다.
+#: 0.01 은 같은 발화에 대한 출력 효과를 1% 로 만든다는 뜻이며, 전체 억제 전류가
+#: 반드시 기존의 1% 가 된다는 뜻이 아니다 (발화 패턴과 막전위도 함께 변한다).
+INHIBITION_GAIN_DEFAULT: float = 1.0
+INHIBITION_GAIN_MIN: float = 0.0
+INHIBITION_GAIN_MAX: float = 1.0
+
+#: 학습 없는 진단(작업 A)의 기본 배율 목록.
+INHIBITION_SCAN_VALUES: tuple[float, ...] = (0.0, 0.01, 0.03, 0.1, 0.25, 0.5,
+                                             0.75, 1.0)
+
+#: 스케줄 모양. cosine 이 기본이고 linear 도 고를 수 있다.
+INHIBITION_SCHEDULES: tuple[str, ...] = ("cosine", "linear")
+
+#: 스케줄 단계 이름.
+INHIBITION_STAGES: tuple[str, ...] = ("warmup", "ramp", "hold")
+
+#: 작업 C 의 필수 네 조건. 모두 **같은 낮은 억제에서 준비한 공통 스냅샷**에서
+#: 출발한다. 처음부터 정상 억제로 독립 준비한 모델과의 비교가 아니다.
+INHIBITION_CONDITIONS: tuple[str, ...] = (
+    "ramp_local",              # start -> end 점진 복원, 교사 교정 켬 (기본)
+    "ramp_zero_teacher",       # 동일한 점진 복원, 교사 교정 0 으로 강제
+    "immediate_local",         # 첫 학습 에폭부터 end 유지, 교사 교정 켬
+    "immediate_zero_teacher",  # 첫 학습 에폭부터 end 유지, 교사 교정 0
+)
+
+#: 선택 대조군 (필수 네 조건을 완성한 뒤에만 쓴다).
+INHIBITION_OPTIONAL_CONDITIONS: tuple[str, ...] = ("low_fixed",)
+
+# ---- 이 파일이 수정한 기준 원본 -------------------------------------
+#: 이 프로그램은 아래 파일을 **실제로 읽고** 해시·버전을 확인한 뒤 수정한 것이다.
+#: 실행 기록에 남겨 어느 원본에서 왔는지 추적할 수 있게 한다.
+BASE_SOURCE_NAME: str = "visual_cortex_gpu_2_fixed.py"
+BASE_SOURCE_VERSION: str = "2.0.2"
+BASE_SOURCE_SHA256: str = (
+    "35f500331683856495a491454a565de9c108690ee28fd7b4bdae45365b3a268d")
+#: 확인 결과. 명세가 준 기준 해시와 첨부 파일의 실제 해시가 일치했다.
+BASE_SOURCE_VERIFIED: bool = True
 
 MS_PER_S: float = 1000.0
 
@@ -464,14 +572,25 @@ FIX_REGISTER: tuple[FixEntry, ...] = (
              "준비 산출물은 실행마다 한 번 preparation_state.json 에 저장하고 "
              "체크포인트에는 경로와 해시만 둔다. 재개 시 해시가 다르면 멈춘다.",
              "check_22_resume"),
-    FixEntry("F37",
-             "준비 단계에서 INSUFFICIENT_SIGNAL 로 중단한 실행의 보고서가 학습 절을 "
-             "일반 경로로 찍어, 왜 멈췄는지 대신 P 변화·판정이 전부 None 으로 "
-             "나왔다. 사용자가 preparation.json 을 직접 열어야 원인을 알 수 있었다.",
-             "중단 실행은 보고서에 '왜 멈췄는가' 절을 따로 찍는다. 영역별 양의 발화 "
-             "수, 표본 간 분산, 원인 후보와 다음에 볼 것을 수치와 함께 적고, 없는 "
-             "학습 수치를 0 으로 채우지 않는다. 그림 생성도 이유를 밝히며 거부한다.",
-             "check_46_insufficient_signal_is_explained"),
+    # --- 억제 점진 복원 실험을 넣으면서 명시적으로 처리한 항목 ---
+    FixEntry("F38",
+             "기존 arrivals_applied 는 값이 0 인 전달까지 포함한 **처리 edge 수**라서, "
+             "실제 도착 사건 수로 읽으면 억제 배율의 효과를 과대평가하게 된다.",
+             "nonzero_arrivals 카운터를 따로 두고 진단에서만 켠다. 두 값을 구분해 "
+             "기록하고 보고서에도 그 차이를 적는다.",
+             "check_50_inhibition_synthetic_emission"),
+    FixEntry("F39",
+             "배율을 도착 시점에 곱하면 지연 중이던 신호가 새 배율로 소급 변경된다. "
+             "또 index_add 경로와 결정론 경로가 서로 다른 값을 쓸 수 있다.",
+             "배율을 발신 시점에 한 번만 곱해 ring 에 저장한다. 두 도착 경로는 ring 의 "
+             "같은 q 를 읽으므로 자동으로 일치한다. 스텝별 발신 배율을 따로 기록해 "
+             "사건 로그가 '현재 배율' 을 과거 스냅샷이라고 적지 않게 했다.",
+             "check_52_inhibition_delay_timing"),
+    FixEntry("F40",
+             "그림 라벨이 한글이라 한글 폰트가 없는 환경에서는 네모 상자로 깨졌다.",
+             "시스템에 이미 있는 한글 폰트를 찾아 쓰고, 없으면 영문 라벨로 내린다. "
+             "폰트를 설치하거나 내려받지 않는다.",
+             "check_28_report_matches_logs"),
     FixEntry("F36",
              "ReportBuilder 가 manifest.json 이 없는 폴더도 받아들여, 사용자가 실행 "
              "폴더 대신 그 안의 figures 폴더를 붙여넣으면 값이 전부 비어 있는 "
@@ -520,12 +639,12 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         "model_choice",
         "이 모델의 설계다. 실제 L1 이 두 개의 숫자만 저장한다고 주장하지 않는다."),
     Assumption(
-        "theta0_15",
-        "발화 임계값 초기값 15 (휴지전위 대비 15 mV), theta_min 5, theta_max 30, "
+        "theta0_initial",
+        "발화 임계값 초기값 10 (휴지전위 대비 10 mV), theta_min 5, theta_max 30, "
         "fast_bound 3 mV.",
         "model_choice",
         "검증할 설정이지 성공이 보장된 최적값이 아니다. E_L = -65 mV 면 초기 절대 "
-        "발화점은 -50 mV 다."),
+        "발화점은 -55 mV 다."),
     Assumption(
         "feedback_port_L1_only",
         "주 실험의 교정 포트를 하위 L1 으로 제한한다.",
@@ -575,8 +694,8 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         "국소 목표 전달의 모델 가정이다. 최종 분류 손실의 정확한 기울기, 완전한 "
         "역합성곱, 올바른 공간 원인 추적이라고 부르지 않는다."),
     Assumption(
-        "threshold_is_learned_from_15",
-        "이번 기본 조건은 초기 임계값 15 에서 L2/L3 흥분성 뉴런의 theta_base 를 "
+        "threshold_is_learned_from_initial",
+        "이번 기본 조건은 초기 임계값 10 에서 L2/L3 흥분성 뉴런의 theta_base 를 "
         "학습한다. 임계값 고정은 frozen_threshold 대조군이다.",
         "model_choice",
         "임계값 학습이 생물학적으로 이렇게 일어난다는 주장이 아니다. 억제성 뉴런의 "
@@ -615,6 +734,31 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         "model_choice",
         "자유 회전을 주면 세 클래스가 서로 뒤바뀌어 라벨이 무의미해진다. 실제 "
         "제한값과 라벨 충돌 표본 수를 데이터 manifest 에 기록한다."),
+    Assumption(
+        "inhibition_curriculum_is_not_development",
+        "억제성 뉴런의 출력 효과를 약하게 시작해 원래 수준으로 복원한다.",
+        "untested_hypothesis",
+        "이 절차를 실제 뇌 발달 기제의 재현이라고 주장하지 않는다. 성공을 전제하지 "
+        "않으며, 모든 뉴런이 동시에 발화하는 것이 목표가 아니다. 입력에 따라 서로 "
+        "다른 활동이 생기고 무입력 반응과 포화가 통제되며 원래 억제 수준에서도 "
+        "정보를 전달하는지가 목표다."),
+    Assumption(
+        "inhibition_gain_is_output_effect_only",
+        "inhibition_gain 은 억제성 뉴런의 **출력 효과** 배율이며 발신 시점에 한 번 "
+        "곱한다.",
+        "model_choice",
+        "세포를 삭제하거나 발화를 강제로 0 으로 만들지 않는다. 0.01 은 같은 발화에 "
+        "대한 출력 효과를 1% 로 만든다는 뜻이고, 전체 억제 전류가 반드시 기존의 1% "
+        "가 된다는 뜻이 아니다. 발화 패턴과 막전위도 함께 변한다. w0 와 역전위는 "
+        "바꾸지 않으며, 배율을 바꿔도 초기 전도도 보정을 다시 하지 않는다."),
+    Assumption(
+        "readout_prepared_at_low_inhibition",
+        "읽기 장치(C / D_img / D_l / 프로토타입)를 낮은 억제에서 준비하고 이후 "
+        "고정한다.",
+        "model_choice",
+        "배율이 바뀌면 특징 분포가 변하므로 준비된 읽기 장치가 낡을 수 있다. 이 "
+        "변화를 IT 분산·rate_scale 포화·D_l 복원 오차로 기록하되 자동 재보정으로 "
+        "숨기지 않는다. 읽기 장치 재적합은 별도 실험이다."),
     Assumption(
         "reconstruction_target_is_observed_input",
         "D_img 의 복원 목표는 관측 입력을 줄인 회색조 영상이다.",
@@ -688,6 +832,32 @@ IMPLEMENTATION_STATUS: tuple[ImplementationItem, ...] = (
     ImplementationItem("oracle_lower_target_injection", "not_implemented",
                        "하위 clean 활동 직접 주입은 설정 자리만 있고 주 경로에서 "
                        "쓰지 않는다. 켜면 별도 이름으로 보고해야 한다."),
+    ImplementationItem("inhibition_gain_at_emission", "implemented",
+                       "q = P * s * gain 을 발신 시점에 한 번 곱해 지연 ring 에 "
+                       "저장한다. 도착 시 다시 곱하지 않으므로 두 합산 경로가 같은 "
+                       "q 를 쓴다."),
+    ImplementationItem("inhibition_schedule", "implemented",
+                       "warmup/ramp/hold 와 cosine/linear 를 구현했다. 일정은 "
+                       "사전에 고정하며 dev 점수에 따라 바꾸지 않는다."),
+    ImplementationItem("inhibition_scan", "implemented",
+                       "배율별로 독립 진단한다. 전달성·IT 구별 가능성·무입력 반응·"
+                       "포화를 각각 보고하고 판정 기준을 설정에 공개한다."),
+    ImplementationItem("inhibition_train", "implemented",
+                       "약한 억제에서 준비한 뒤 점진 복원하며 기존 L5/L6/L1 교정과 "
+                       "theta_base 학습을 그대로 쓴다."),
+    ImplementationItem("inhibition_compare_four_conditions", "implemented",
+                       "ramp_local / ramp_zero_teacher / immediate_local / "
+                       "immediate_zero_teacher 를 공통 준비 스냅샷에서 출발시킨다."),
+    ImplementationItem("inhibition_resume_mid_batch", "not_implemented",
+                       "중간 배치 재개는 지원하지 않는다. 체크포인트는 마지막 완료 "
+                       "미니배치를 저장하고 재개는 에폭 경계에서 다시 시작한다."),
+    ImplementationItem("readout_refit_at_high_inhibition", "not_implemented",
+                       "배율이 바뀐 뒤 읽기 장치를 다시 맞추지 않는다. 표류만 "
+                       "기록한다. 재적합은 별도 실험이다."),
+    ImplementationItem("inhibition_validation_1_to_11", "unverified",
+                       "명세 8절 검사 1~11 (check_49~59) 을 코드로 구현했다. 작성 "
+                       "환경에 torch 가 없어 모형이 필요한 검사는 실행 검증하지 "
+                       "않았다: 사용자가 메뉴 2 로 실행해야 PASS/FAIL 이 정해진다."),
     ImplementationItem("validation_A_to_E", "unverified",
                        "명세 18절 A~E 검사(29~44번)를 코드로 구현했다. 작성 환경에 "
                        "torch 가 없어 실행 검증은 하지 않았다: 사용자가 메뉴 2 로 "
@@ -1135,9 +1305,9 @@ PARAM_PROVENANCE: tuple[ProvenanceEntry, ...] = (
         "영장류 V1 의 편심도 의존 확대라는 정성적 성질을 차용했다. e0[deg] 와 격자 "
         "크기는 계산 가정이다."),
     ProvenanceEntry(
-        "모든 뉴런의 임계값 15.0",
+        f"모든 뉴런의 초기 임계값 {THETA0}",
         EVIDENCE_ASSUMED,
-        "이번 연구의 고정 가정이다. 휴지막전위 대비 15 mV 탈분극에 해당하도록 단위를 "
+        f"초기 설정 가정이다. 휴지막전위 대비 {THETA0} mV 탈분극에 해당하도록 단위를 "
         "정의했다. 생물학적 측정값이 아니다."),
     ProvenanceEntry(
         "출력 이득 P 만 학습하는 규칙과 SPSA 갱신",
@@ -1458,7 +1628,7 @@ def build_config(preset: str = "v1_small", *, include_v3: bool = False,
     cfg: dict[str, Any] = {
         "meta": {
             "preset": preset, "version": __version__,
-            "description": f"{preset} preset. 고정 임계값 {THRESHOLD}, P 만 학습.",
+            "description": f"{preset} preset. 임계값 초기값 {THETA0}; 기본 학습 대상은 L2/L3 theta_base.",
             "claims": [
                 "모든 수치는 모형 파라미터다. 생물학적 측정값이 아니다.",
                 "이 결과를 인간 뇌의 완전한 복제라고 부르지 않는다.",
@@ -1471,8 +1641,8 @@ def build_config(preset: str = "v1_small", *, include_v3: bool = False,
         # torch.use_deterministic_algorithms(True) 가 켜진다 (메모리·시간이 더 든다).
         "deterministic": False,
         "threshold": {"value": THRESHOLD, "v_unit_mV": V_UNIT_MV,
-                      "trainable": False,
-                      "note": "휴지막전위 대비 15 mV 탈분극에 해당하는 정규화 판정값"},
+                      "trainable": True,
+                      "note": f"초기값은 휴지막전위 대비 {THETA0} mV. 실제 학습 마스크와 조건은 threshold_learning 참조"},
         "engine": {
             "dt_ms": 1.0, "sample_ms": float(sample_ms), "min_delay_steps": 1,
             "delay_rounding": "ceil", "reset_between_samples": True,
@@ -1499,6 +1669,7 @@ def build_config(preset: str = "v1_small", *, include_v3: bool = False,
                        "prefilter_by_eccentricity": True},
         "areas": areas,
         "wiring": {"rules": rules, "max_total_synapses": 4_000_000,
+                   "calibration_reference_threshold_mV": WEIGHT_CALIBRATION_THRESHOLD,
                    "graph_feedforward": [list(e) for e in graph_ff]},
         "v1": {
             "n_orientations": 12, "orientation_step_deg": 15.0,
@@ -1515,7 +1686,7 @@ def build_config(preset: str = "v1_small", *, include_v3: bool = False,
             "trainable": False,
             "note": "고정 해독기. 클래스 그룹은 인공적인 해독 규칙이다",
         },
-        # ---- 이번 기본 조건: 초기 임계값 15 에서 L2/L3 흥분성 임계값 학습 ----
+        # ---- 이번 기본 조건: 초기 임계값 THETA0 에서 L2/L3 흥분성 임계값 학습 ----
         "threshold_learning": {
             "enabled": True,
             "condition": "proposed_local_threshold",
@@ -1534,6 +1705,31 @@ def build_config(preset: str = "v1_small", *, include_v3: bool = False,
             "inhibitory_threshold_learning": False,
             "note_ko": ("과잉(r>0)이면 임계값을 올리고 부족(r<0)이면 내린다. "
                         "r = a - t 로 부호를 전체 프로그램에서 통일한다."),
+        },
+        # ---- 억제 점진 복원 실험 (선택 작업에서만 쓴다) ----------------
+        # 기존 실행 모드는 gain=1.0 이라 동작이 그대로 보존된다.
+        "inhibition": {
+            "gain": INHIBITION_GAIN_DEFAULT,   # 현재 배율. 기존 모드는 항상 1.0
+            "start": 0.01, "end": 1.0,
+            "warmup_epochs": 5, "ramp_epochs": 20, "hold_epochs": 5,
+            "schedule": "cosine",
+            "scan_values": list(INHIBITION_SCAN_VALUES),
+            "condition": "ramp_local",
+            "eval_gain": None,                 # None 이면 스케줄의 end 로 평가
+            # 작업 A 의 판정 기준. **사전에 공개**하고 결과에 맞춰 바꾸지 않는다.
+            "criteria": {
+                "transmits_min_active_fraction": 0.02,
+                "it_distinguishable_min_pair_distance": 1e-6,
+                "it_distinguishable_min_variance": 1e-12,
+                "blank_response_max_active_fraction": 0.50,
+                "saturation_max_fraction": 0.80,
+                "note_ko": ("chain_transmits 하나로 축약하지 않는다. 전달성, IT 입력 "
+                            "구별 가능성, 무입력 반응, 포화를 각각 보고한다."),
+            },
+            "note_ko": ("억제성 뉴런의 **출력 효과** 배율이다. alpha_att (주의) 와 "
+                        "다른 변수다. 세포를 삭제하거나 발화를 0 으로 만들지 않고, "
+                        "w0 와 역전위도 바꾸지 않는다. 배율을 바꿔도 초기 전도도 "
+                        "보정을 다시 하지 않는다."),
         },
         "readout_prep": {
             "classifier": {"kind": "linear_ce_last_module", "epochs": 30,
@@ -1603,6 +1799,10 @@ def validate_config(cfg: dict[str, Any]) -> None:
          f"임계값 **초기값**은 {THETA0} 이다 (설정으로 바꾸지 않는다)")
     need(cfg["decoder"]["trainable"] is False, "고정 해독기를 학습 대상으로 둘 수 없다")
     tl = cfg["threshold_learning"]
+    need(tl["theta0_mV"] == THETA0, "threshold_learning.theta0_mV 와 초기 임계값이 일치해야 한다")
+    need(cfg["wiring"].get("calibration_reference_threshold_mV",
+                           WEIGHT_CALIBRATION_THRESHOLD) == WEIGHT_CALIBRATION_THRESHOLD,
+         "초기 가중치 보정 기준은 15 mV로 유지한다 (발화 초기값 10 mV와 별도)")
     need(tl["condition"] in THRESHOLD_CONDITIONS,
          f"threshold_learning.condition 은 {list(THRESHOLD_CONDITIONS)} 중 하나다")
     need(tl["theta_min_mV"] < tl["theta0_mV"] < tl["theta_max_mV"],
@@ -1660,6 +1860,47 @@ def validate_config(cfg: dict[str, Any]) -> None:
         need(r["w0_median_nS"] >= 0 and r["w0_max_nS"] > 0, f"{tag}: w0 는 비음수")
         need(r["conduction_velocity_mm_per_ms"] > 0, f"{tag}: 전도 속도는 양수")
         need(r["synaptic_delay_ms"] >= 0, f"{tag}: 시냅스 지연은 0 이상")
+    # ---- 억제 점진 복원 설정 (명세 4절) ----------------------------
+    inh = cfg["inhibition"]
+    for key in ("gain", "start", "end"):
+        v = float(inh[key])
+        need(math.isfinite(v), f"inhibition.{key} 는 유한수여야 한다 (지금 {v!r})")
+        need(INHIBITION_GAIN_MIN <= v <= INHIBITION_GAIN_MAX,
+             f"inhibition.{key} 는 [0, 1] 범위다 (지금 {v})")
+    need(float(inh["start"]) <= float(inh["end"]),
+         f"0 <= start <= end <= 1 이어야 한다 "
+         f"(start={inh['start']}, end={inh['end']})")
+    need(int(inh["ramp_epochs"]) >= 1, "inhibition.ramp_epochs 는 1 이상")
+    need(int(inh["warmup_epochs"]) >= 0, "inhibition.warmup_epochs 는 0 이상")
+    need(int(inh["hold_epochs"]) >= 0, "inhibition.hold_epochs 는 0 이상")
+    need(str(inh["schedule"]) in INHIBITION_SCHEDULES,
+         f"inhibition.schedule 은 {list(INHIBITION_SCHEDULES)} 중 하나다")
+    need(str(inh["condition"]) in (INHIBITION_CONDITIONS
+                                  + INHIBITION_OPTIONAL_CONDITIONS),
+         f"inhibition.condition 은 "
+         f"{list(INHIBITION_CONDITIONS + INHIBITION_OPTIONAL_CONDITIONS)} 중 하나다")
+    vals = list(inh["scan_values"])
+    need(len(vals) >= 1, "inhibition.scan_values 가 비어 있다")
+    for v in vals:
+        need(math.isfinite(float(v))
+             and INHIBITION_GAIN_MIN <= float(v) <= INHIBITION_GAIN_MAX,
+             f"inhibition.scan_values 원소는 [0, 1] 의 유한수다 (지금 {v!r})")
+    if inh.get("eval_gain") is not None:
+        ev = float(inh["eval_gain"])
+        need(math.isfinite(ev) and INHIBITION_GAIN_MIN <= ev <= INHIBITION_GAIN_MAX,
+             f"inhibition.eval_gain 은 [0, 1] 의 유한수다 (지금 {ev})")
+    crit = inh["criteria"]
+    for key in ("transmits_min_active_fraction", "blank_response_max_active_fraction",
+                "saturation_max_fraction"):
+        v = float(crit[key])
+        need(math.isfinite(v) and 0.0 <= v <= 1.0,
+             f"inhibition.criteria.{key} 는 [0, 1] 의 유한수다 (지금 {v})")
+    # 배율을 바꿔도 초기 전도도 보정 기준은 그대로다 (명세 2절 3항)
+    need(cfg["wiring"].get("calibration_reference_threshold_mV",
+                           WEIGHT_CALIBRATION_THRESHOLD)
+         == WEIGHT_CALIBRATION_THRESHOLD,
+         "억제 배율을 바꿔도 초기 전도도 보정 기준을 다시 잡지 않는다")
+
     rt = cfg["retinotopy"]
     need(rt["e0_deg"] > 0, "retinotopy.e0_deg 는 양수")
     need(rt["n_radial"] >= 1 and rt["n_angular"] >= 1, "격자 크기는 1 이상")
@@ -2725,7 +2966,7 @@ class NeuronView3x3:
     ==== =========================================================
     [0][0..2]  x, y, z 위치 [mm]
     [1][0]     **출력 연결 목록**의 조회 핸들 (입력 총합이 아니다)
-    [1][1]     읽기 전용 임계값 15.0
+    [1][1]     현재 기저 임계값 theta_base (조회 전용, 초기 10)
     [1][2]     현재 출력 이득 P_i
     [2][0]     들어온 사건의 보존 로그 조회 핸들
     [2][1]     막전위·전도도·불응기·현재 판정값 핸들
@@ -2877,7 +3118,7 @@ class NeuronView3x3:
     @staticmethod
     def layout_description() -> list[list[str]]:
         return [["x_mm", "y_mm", "z_mm"],
-                ["outgoing_connection_list", "threshold_15_readonly", "output_gain_P"],
+                ["outgoing_connection_list", "threshold_base_readonly", "output_gain_P"],
                 ["input_event_log", "dynamic_state", "metadata"]]
 
 
@@ -2953,7 +3194,7 @@ class BuildReport:
 class CorticalBuilder:
     """설정 -> 뉴런 배열 + 시냅스 배열.
 
-    초기 시냅스 크기 ``w0`` 는 **수렴 수·수용체 시상수·고정 임계값 15** 를 함께
+    초기 시냅스 크기 ``w0`` 는 **수렴 수·수용체 시상수·가중치 보정 기준 15 mV** 를 함께
     고려해 생성하고 그 규칙을 기록한다. 생성이 끝나면 과제 학습 중 w0 는 절대
     바뀌지 않는다.
     """
@@ -3176,7 +3417,7 @@ class CorticalBuilder:
             rng = self.seeds.numpy("orientation_map", k)
             maps[aname] = SharedOrientationMap(int(pin["n_waves"]),
                                                float(pin["hypercolumn_mm"]), rng, aname)
-        uv = self._meta_np["uv"]
+        uv = arrays.surface_uv_mm.detach().to("cpu").numpy().astype(np.float64)
         aid = self._meta_np["aid"]
         ori = np.full(arrays.n, np.nan)
         pha = np.full(arrays.n, np.nan)
@@ -3422,17 +3663,17 @@ class CorticalBuilder:
                       per_rule: list[dict[str, Any]],
                       rule_slices: list[tuple[int, int, int]], src: np.ndarray,
                       dst: np.ndarray, rec: np.ndarray, w0: np.ndarray) -> dict[str, Any]:
-        """고정 임계값 15 에 닿을 수 있도록 w0 를 한 번만 보정한다.
+        """초기 발화값과 독립적인 기준 15 mV로 w0 를 한 번만 보정한다.
 
         정상상태 근사::
 
-            V_th          = E_L + 15 * V_unit
+            V_th          = E_L + WEIGHT_CALIBRATION_THRESHOLD * V_unit
             g_need [nS]   = gL * (V_th - E_L) / (E_rev - V_th)
             g(R)   [nS]   = deg * w * (tau/1000) * R
             factor        = TARGET_RATIO * g_need / g(R_ref)
 
-        흥분성 규칙에만 적용하고, 억제성 규칙은 같은 표적 영역 흥분성 규칙의 평균
-        배율을 따라가 E/I 균형을 유지한다. **보정은 생성 시점에 한 번만** 하며
+        흥분성 규칙에 적용하고, 억제성 규칙은 같은 표적 영역 흥분성 규칙의 평균
+        배율을 따른다 (실제 E/I 균형 보장은 아니다). **보정은 생성 시점에 한 번만** 하며
         이후 과제 학습 중 w0 는 바뀌지 않는다.
         """
         m = self._meta_np
@@ -3452,7 +3693,7 @@ class CorticalBuilder:
             w_mean = float(w0[sl].mean())
             gL = float(m["gL"][targets, 0].mean())
             EL = float(m["EL"][targets, 0].mean())
-            v_th = EL + THRESHOLD * V_UNIT_MV
+            v_th = EL + WEIGHT_CALIBRATION_THRESHOLD * V_UNIT_MV
             driving = float(params["E_rev_mV"]) - v_th
             row = {"rule": name, "receptor": rname, "mean_in_degree": float(deg),
                    "w0_mean_raw_nS": w_mean, "gL_nS": gL, "EL_mV": EL,
@@ -3489,10 +3730,12 @@ class CorticalBuilder:
                     row["factor"] = f
                     row["w0_mean_calibrated_nS"] = float(w0[slice(start, stop)].mean())
         self.notes.append(
-            "w0 는 수렴 수·수용체 시상수·고정 임계값 15 를 함께 고려해 생성 시점에 "
+            f"w0 는 수렴 수·수용체 시상수·보정 기준 {WEIGHT_CALIBRATION_THRESHOLD} mV를 고려해 생성 시점에 "
             f"한 번 보정했다 (기준 발화율 {self.REFERENCE_PRESYN_RATE_HZ} Hz, "
             f"목표 배율 {self.TARGET_RATIO}). 이후 과제 학습 중 w0 는 고정이다.")
         return {
+            "calibration_reference_threshold_mV": WEIGHT_CALIBRATION_THRESHOLD,
+            "initial_firing_threshold_mV": THETA0,
             "reference_presyn_rate_hz": self.REFERENCE_PRESYN_RATE_HZ,
             "target_ratio": self.TARGET_RATIO,
             "factor_bounds": list(self.FACTOR_BOUNDS),
@@ -3506,7 +3749,9 @@ class CorticalBuilder:
 # 8. 출력 이득 / 지연 ring / 동적 상태 / GPU 엔진
 # ======================================================================
 class GainParameters:
-    """학습하는 **유일한** 파라미터: 뉴런별 출력 이득 P.
+    """legacy P-only 조건의 파라미터: 뉴런별 출력 이득 P.
+
+    기본 임계값 학습 조건에서는 이 파라미터를 고정한다.
 
     ``P(z) = P_min + (P_max - P_min) * sigmoid(z)`` 로 재매개변수화한다.
     z 는 P 의 좌표 표현일 뿐 별도의 임계값이나 편향이 아니다.
@@ -3574,6 +3819,244 @@ class GainParameters:
         self.P_min = float(st["P_min"])
         self.P_max = float(st["P_max"])
         self._current_P = self.P_from_z(self.z).unsqueeze(0)
+
+
+class InhibitionGate:
+    """억제성 뉴런의 **출력 효과** 배율을 발신 시점에 한 번 적용한다.
+
+    수식 (명세 3절)::
+
+        gain_i = inhibition_gain   if dale_i < 0
+                 1.0               otherwise
+        q_emit_i = P_i * s_i * gain_i
+        arrival_delta_g_ij = w0_ij * q_emit_i_at_emission
+
+    지켜야 할 것
+    ------------
+    * 배율은 **발신 시점에 딱 한 번**만 곱해 지연 ring 에 저장한다. 도착 시점에
+      현재 배율을 다시 곱하지 않으며, 지연 중인 신호를 새 배율로 소급 변경하지
+      않는다. 그래서 ``index_add`` 경로와 결정론적 segment-sum 경로가 자동으로
+      **같은 q** 를 쓴다.
+    * 억제성 세포를 삭제하거나 발화를 강제로 0 으로 만들지 않는다. 배율 0 에서도
+      억제성 세포 자체는 발화한다 (전달 효과만 0 이다).
+    * 흥분성 -> 억제성 AMPA 입력, 누설 전도도, 구획 결합 전도도, 외생 감각 입력은
+      배율 대상이 **아니다**.
+    * ``w0_nS`` 는 비음수·불변이다. 억제를 음의 전도도로 만들거나 역전위를 바꾸지
+      않는다.
+    * ``alpha = 1.0`` 이면 곱셈이 IEEE754 에서 정확히 항등이므로 기존 동작이
+      비트 단위로 보존된다 (검사 1 이 이것을 확인한다).
+
+    상태
+    ----
+    ``vector`` 는 ``[N]`` 텐서이고 엔진이 ``view(1, 1, N)`` 으로 broadcast 해
+    ``[R, B, N]`` 에 곱한다. 매 스텝 파이썬 뉴런 루프를 돌지 않는다.
+    """
+
+    def __init__(self, arrays: "NeuronArrays", device: Any, dtype: Any,
+                 gain: float = INHIBITION_GAIN_DEFAULT) -> None:
+        t = require_torch()
+        self.device, self.dtype = device, dtype
+        #: dale < 0 인 뉴런 (PV, SST, L1 억제성 등 설정에 있는 모든 억제성 유형)
+        self.inhibitory_mask = (arrays.dale < 0)
+        self.n_inhibitory = int(self.inhibitory_mask.sum())
+        self.n_total = int(arrays.n)
+        self._ones = t.ones(self.n_total, dtype=dtype, device=device)
+        self._gain = float(INHIBITION_GAIN_DEFAULT)
+        self.vector = self._ones.clone()
+        self.history: list[dict[str, Any]] = []
+        self.set_gain(gain, reason="initial")
+
+    # ------------------------------------------------------------------
+    @property
+    def gain(self) -> float:
+        return self._gain
+
+    def set_gain(self, gain: float, *, reason: str = "") -> dict[str, Any]:
+        """배율을 바꾼다. **episode/epoch 경계에서만** 부른다.
+
+        같은 episode 의 자유/유도/사후 단계에서 배율이 달라지면 안 되므로,
+        호출 지점을 기록에 남긴다.
+        """
+        t = require_torch()
+        g = float(gain)
+        if not math.isfinite(g):
+            raise ValueError(f"inhibition_gain 이 유한수가 아니다: {gain!r}")
+        if not (INHIBITION_GAIN_MIN - 1e-12 <= g <= INHIBITION_GAIN_MAX + 1e-12):
+            raise ValueError(
+                f"inhibition_gain 은 [{INHIBITION_GAIN_MIN}, {INHIBITION_GAIN_MAX}] "
+                f"범위여야 한다: {g}")
+        g = min(max(g, INHIBITION_GAIN_MIN), INHIBITION_GAIN_MAX)
+        before = self._gain
+        self._gain = g
+        # 억제성만 g, 나머지는 정확히 1.0
+        self.vector = t.where(self.inhibitory_mask, 
+                              t.full_like(self._ones, g), self._ones)
+        rec = {"from": before, "to": g, "reason": reason,
+               "n_inhibitory": self.n_inhibitory, "n_total": self.n_total}
+        self.history.append(rec)
+        return rec
+
+    # ------------------------------------------------------------------
+    def apply_to_emission(self, q: Any) -> Any:
+        """``q = P * s`` -> ``q * gain_vector``. 발신 시점에 **한 번만** 부른다.
+
+        ``q`` 는 ``[R, B, N]``. 배율 1 이면 값이 비트 단위로 보존된다.
+        """
+        return q * self.vector.view(1, 1, -1)
+
+    def is_identity(self) -> bool:
+        return self._gain == 1.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "inhibition_gain": self._gain,
+            "n_inhibitory_neurons": self.n_inhibitory,
+            "n_total_neurons": self.n_total,
+            "applied_at": "emission (q = P * s * gain), 발신 시점 1회",
+            "not_applied_to": ["흥분성 뉴런 출력", "흥분성->억제성 AMPA 입력",
+                               "누설 전도도", "구획 결합 전도도", "외생 감각 입력",
+                               "w0_nS", "역전위"],
+            "w0_unchanged": True,
+            "inhibitory_cells_still_spike": True,
+            "changes": self.history[-5:],
+            "note_ko": ("배율 0.01 은 같은 발화에 대한 출력 효과를 1% 로 만든다는 "
+                        "뜻이다. 전체 억제 전류가 반드시 기존의 1% 가 된다는 뜻이 "
+                        "아니며, 발화 패턴과 막전위도 함께 변한다."),
+        }
+
+    def state_dict(self) -> dict[str, Any]:
+        return {"inhibition_gain": self._gain, "history": self.history}
+
+    def load_state_dict(self, st: dict[str, Any]) -> None:
+        self.set_gain(float(st["inhibition_gain"]), reason="checkpoint_restore")
+        self.history = list(st.get("history") or []) + self.history[-1:]
+
+
+@dataclass
+class InhibitionSchedule:
+    """에폭에 따른 억제 배율 일정 (명세 4절).
+
+    ``e`` 를 0 부터 셀 때::
+
+        e < warmup                    -> start
+        warmup <= e < warmup + ramp   -> r = (e - warmup + 1) / ramp
+                                         cosine: start + (end-start)*0.5*(1-cos(pi*r))
+                                         linear: start + (end-start)*r
+        그 이후                        -> end
+
+    일정은 **사전에 고정**한다. dev 정확도가 좋아질 때만 배율을 올리거나 조건별로
+    다른 일정을 자동 선택하지 않는다.
+    """
+
+    start: float = 0.01
+    end: float = 1.0
+    warmup_epochs: int = 5
+    ramp_epochs: int = 20
+    hold_epochs: int = 5
+    kind: str = "cosine"
+
+    def __post_init__(self) -> None:
+        self.validate()
+
+    # ------------------------------------------------------------------
+    def validate(self) -> None:
+        """유한수, 0<=start<=end<=1, ramp>=1, 나머지 에폭 수 >=0 을 확인한다."""
+        for name in ("start", "end"):
+            v = float(getattr(self, name))
+            if not math.isfinite(v):
+                raise ValueError(f"inhibition {name} 이 유한수가 아니다: {v!r}")
+        if not (INHIBITION_GAIN_MIN <= self.start <= self.end
+                <= INHIBITION_GAIN_MAX):
+            raise ValueError(
+                f"0 <= start <= end <= 1 이어야 한다: start={self.start}, "
+                f"end={self.end}")
+        if int(self.ramp_epochs) < 1:
+            raise ValueError(f"ramp_epochs 는 1 이상이어야 한다: {self.ramp_epochs}")
+        for name in ("warmup_epochs", "hold_epochs"):
+            v = int(getattr(self, name))
+            if v < 0:
+                raise ValueError(f"{name} 은 0 이상이어야 한다: {v}")
+        if str(self.kind) not in INHIBITION_SCHEDULES:
+            raise ValueError(
+                f"알 수 없는 스케줄: {self.kind!r} (가능: {list(INHIBITION_SCHEDULES)})")
+
+    # ------------------------------------------------------------------
+    @property
+    def total_epochs(self) -> int:
+        return (int(self.warmup_epochs) + int(self.ramp_epochs)
+                + int(self.hold_epochs))
+
+    def stage_at(self, epoch: int) -> str:
+        e = int(epoch)
+        if e < self.warmup_epochs:
+            return "warmup"
+        if e < self.warmup_epochs + self.ramp_epochs:
+            return "ramp"
+        return "hold"
+
+    def alpha_at(self, epoch: int) -> float:
+        """에폭 ``e`` 의 예정 배율. 단조 증가이고 마지막 값은 정확히 ``end`` 다."""
+        e = int(epoch)
+        if e < 0:
+            raise ValueError(f"epoch 은 0 이상이어야 한다: {e}")
+        if e < self.warmup_epochs:
+            return float(self.start)
+        if e < self.warmup_epochs + self.ramp_epochs:
+            r = (e - self.warmup_epochs + 1) / float(self.ramp_epochs)
+            span = float(self.end) - float(self.start)
+            if self.kind == "linear":
+                val = float(self.start) + span * r
+            else:                                   # cosine (기본, 완만함)
+                val = float(self.start) + span * 0.5 * (1.0 - math.cos(math.pi * r))
+            # 부동소수점 오차로 end 를 넘지 않게 자른다
+            return float(min(max(val, self.start), self.end))
+        return float(self.end)
+
+    def table(self) -> list[dict[str, Any]]:
+        """전체 일정을 행으로. ``inhibition_schedule.csv`` 의 예정 값이 된다."""
+        return [{"epoch": e, "stage": self.stage_at(e),
+                 "planned_alpha": self.alpha_at(e)}
+                for e in range(self.total_epochs)]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "start": float(self.start), "end": float(self.end),
+            "warmup_epochs": int(self.warmup_epochs),
+            "ramp_epochs": int(self.ramp_epochs),
+            "hold_epochs": int(self.hold_epochs),
+            "kind": str(self.kind), "total_epochs": self.total_epochs,
+            "planned_alpha_first": self.alpha_at(0),
+            "planned_alpha_last": self.alpha_at(max(0, self.total_epochs - 1)),
+            "fixed_in_advance": True,
+            "note_ko": ("일정은 사전에 고정한다. dev 정확도에 따라 배율을 바꾸거나 "
+                        "조건별로 다른 일정을 자동 선택하지 않는다."),
+        }
+
+    @classmethod
+    def from_config(cls, cfg: dict[str, Any]) -> "InhibitionSchedule":
+        inh = cfg["inhibition"]
+        return cls(start=float(inh["start"]), end=float(inh["end"]),
+                   warmup_epochs=int(inh["warmup_epochs"]),
+                   ramp_epochs=int(inh["ramp_epochs"]),
+                   hold_epochs=int(inh["hold_epochs"]),
+                   kind=str(inh["schedule"]))
+
+    @classmethod
+    def immediate(cls, base: "InhibitionSchedule") -> "InhibitionSchedule":
+        """``immediate_*`` 조건: 첫 학습 에폭부터 end 를 유지한다.
+
+        총 에폭 수는 ``base`` 와 **같게** 맞춘다 (조건 간 계산량을 맞추기 위해).
+        """
+        total = base.total_epochs
+        return cls(start=base.end, end=base.end, warmup_epochs=0,
+                   ramp_epochs=1, hold_epochs=max(0, total - 1), kind=base.kind)
+
+    @classmethod
+    def constant(cls, value: float, total_epochs: int,
+                 kind: str = "cosine") -> "InhibitionSchedule":
+        """``low_fixed`` 선택 대조군: 전 구간 같은 배율."""
+        return cls(start=value, end=value, warmup_epochs=0, ramp_epochs=1,
+                   hold_epochs=max(0, int(total_epochs) - 1), kind=kind)
 
 
 class DelayRing:
@@ -3672,7 +4155,7 @@ class ExternalDrive:
     """망막에 주는 외생 입력.
 
     ``mode='current'`` 면 ``values`` 는 pA, ``mode='poisson'`` 이면 nS 전도도
-    펄스다. 어느 쪽이든 모든 뉴런은 **같은 임계값 15 판정을 거친다**. Poisson
+    펄스다. 어느 쪽이든 모든 뉴런은 **각자의 theta_eff 판정을 거친다**. Poisson
     사건을 강제 발화로 우회시키지 않는다.
     """
 
@@ -3696,8 +4179,9 @@ class GpuConductanceEngine:
         1. 지연 ring 에서 이번 도착 분을 gather
         2. 고정 w0 와 곱해 (표적, 구획, 수용체) 별 합산
         3. 외생 입력·잔류 전도도·구획 결합을 반영해 상태 갱신
-        4. 고정 임계값 15 와 불응기 판정
-        5. q = P * s 계산 후 미래 전달 버퍼에 저장
+        4. 현재 theta_eff 와 불응기 판정 (초기 THETA0)
+        5. q = P * s * inhibition_gain 계산 후 미래 전달 버퍼에 저장
+           (배율은 **발신 시점에 한 번만** 곱한다. 도착 시 다시 곱하지 않는다.)
         6. 기록용 스냅샷 전달
 
     입력 합산이 끝나기 전에 같은 뉴런의 이번 발화를 계산하지 않는다.
@@ -3721,6 +4205,17 @@ class GpuConductanceEngine:
         self.theta_max = float(tl.get("theta_max_mV", THETA_MAX))
         self.arrival_path = ("deterministic_segment_sum" if self.deterministic
                              else "index_add")
+        #: 억제성 뉴런 **출력 효과** 배율. 발신 시점에 한 번만 곱한다.
+        #: 기본값 1.0 이면 곱셈이 항등이라 기존 동작이 비트 단위로 보존된다.
+        self.inhibition = InhibitionGate(
+            arrays, device, dtype,
+            gain=float(cfg.get("inhibition", {}).get(
+                "gain", INHIBITION_GAIN_DEFAULT)))
+        #: ``{발신 스텝: 그 때의 배율}``. 지연 중인 신호의 발신 당시 배율을
+        #: 되찾는 데 쓴다. ``reset_counters`` 에서 비운다.
+        self.emit_gain_log: dict[int, float] = {}
+        #: True 면 실제 비영 도착 수를 센다. 진단에서만 켠다 (추가 reduction 비용).
+        self.count_nonzero_arrivals = False
         self.tau = t.tensor([float(RECEPTOR_PARAMS[r]["tau_ms"]) for r in RECEPTORS],
                             dtype=dtype, device=device)
         self.E_rev = t.tensor([float(RECEPTOR_PARAMS[r]["E_rev_mV"]) for r in RECEPTORS],
@@ -3735,8 +4230,25 @@ class GpuConductanceEngine:
         self.reset_counters()
 
     def reset_counters(self) -> None:
-        self.counters = {"steps": 0, "spikes_emitted": 0, "arrivals_applied": 0,
-                         "exogenous_events": 0}
+        self.counters = {
+            "steps": 0, "spikes_emitted": 0,
+            # arrivals_applied 는 **처리한 edge 수**다. 값이 0 인 전달도 포함하므로
+            # 실제 도착 사건 수로 보고하면 안 된다 (명세 5절).
+            "arrivals_applied": 0,
+            # 실제로 값이 0 보다 큰 도착 수. count_nonzero_arrivals 를 켤 때만 센다.
+            "nonzero_arrivals": 0,
+            "nonzero_arrivals_counted": 0,   # 1 이면 위 값이 유효하다
+            "exogenous_events": 0,
+        }
+        self.emit_gain_log.clear()
+
+    def gain_at_emit(self, emit_step: int) -> float:
+        """``emit_step`` 에 발신된 신호의 **발신 당시** 배율.
+
+        기록이 없으면 (아직 아무 것도 발신되지 않은 스텝) 현재 배율을 돌려주되,
+        그런 스텝에는 비영 도착 사건 자체가 없다.
+        """
+        return float(self.emit_gain_log.get(int(emit_step), self.inhibition.gain))
 
     # ------------------------------------------------------------------
     def _mg_block(self, V: Any) -> Any:
@@ -3763,6 +4275,7 @@ class GpuConductanceEngine:
         M = n * N_COMP * N_RECEPTOR
         flat = t.zeros((R, B, M), dtype=self.dtype, device=self.device)
         applied = 0
+        nonzero = 0
         if self.deterministic:
             for delay, idx_sorted, seg_target, seg_end in self.syn.sorted_groups:
                 past = ring.read(step, delay)
@@ -3778,6 +4291,8 @@ class GpuConductanceEngine:
                 totals = (end_vals - start_vals).to(self.dtype)
                 flat[:, :, seg_target] = flat[:, :, seg_target] + totals
                 applied += int(idx_sorted.numel())
+                if self.count_nonzero_arrivals:
+                    nonzero += int((amount > 0).sum())
         else:
             flat2 = flat.view(R * B, M)
             for delay, idx in self.syn.delay_groups:
@@ -3793,7 +4308,12 @@ class GpuConductanceEngine:
                     flat2.index_add_(1, self.syn.flat_target[sub],
                                      amount.reshape(R * B, -1))
                     applied += int(sub.numel())
+                    if self.count_nonzero_arrivals:
+                        nonzero += int((amount > 0).sum())
         self.counters["arrivals_applied"] += applied
+        if self.count_nonzero_arrivals:
+            self.counters["nonzero_arrivals"] += nonzero
+            self.counters["nonzero_arrivals_counted"] = 1
         return flat.view(R, B, n, N_COMP, N_RECEPTOR)
 
     # ------------------------------------------------------------------
@@ -3887,12 +4407,21 @@ class GpuConductanceEngine:
         n_spk = int(spikes.sum())
         self.counters["spikes_emitted"] += n_spk
 
-        # 6. q = P * s 를 발신 시점의 P 와 곱해 ring 에 저장 -------------
-        q = P.unsqueeze(1) * s_f                               # [R,B,N]
+        # 6. q = P * s * inhibition_gain 을 **발신 시점 값으로** ring 에 저장 --
+        #    억제 배율은 여기서 딱 한 번 곱한다. 도착 시점에 현재 배율을 다시
+        #    곱하지 않으므로, 지연 중인 신호는 발신 당시 배율을 유지한다.
+        #    index_add 경로와 결정론적 segment-sum 경로가 같은 q 를 읽는다.
+        q_pre_inhibition = P.unsqueeze(1) * s_f                # [R,B,N]
+        q = self.inhibition.apply_to_emission(q_pre_inhibition)
         ring.write(next_step, q)
+        # 발신 스텝별 배율을 남긴다. 나중에 도착한 사건의 '발신 당시 배율' 을
+        # 현재 배율로 대신 적지 않기 위해서다 (명세 9절 / 검사 4).
+        self.emit_gain_log[next_step] = self.inhibition.gain
         self.counters["steps"] += 1
         return {"step": step_index, "spike_step": next_step, "spikes": spikes,
-                "q": q, "u": u, "n_spikes": n_spk, "theta_eff": theta_eff,
+                "q": q, "q_pre_inhibition": q_pre_inhibition,
+                "inhibition_gain": self.inhibition.gain,
+                "u": u, "n_spikes": n_spk, "theta_eff": theta_eff,
                 "delta_g": delta_g, "refractory": refractory}
 
 
@@ -4961,6 +5490,35 @@ class CorticalModel:
         self.state.reset()
         self.ring.reset()
 
+    # -- 억제 배율 (단일 접근점) ---------------------------------------
+    @property
+    def inhibition(self) -> "InhibitionGate":
+        """엔진이 실제로 쓰는 게이트. 모든 경로가 **이 객체 하나**를 본다."""
+        return self.engine.inhibition
+
+    @property
+    def inhibition_gain(self) -> float:
+        return self.engine.inhibition.gain
+
+    def set_inhibition_gain(self, gain: float, *, reason: str = "") -> dict[str, Any]:
+        """배율을 바꾼다. **episode/epoch 경계에서만** 부른다.
+
+        같은 episode 의 자유/유도/사후 단계에서 배율이 달라지면 안 된다. 여기서는
+        동역학 상태를 건드리지 않는다. 상태 리셋은 호출한 쪽이 결정한다.
+        """
+        return self.engine.inhibition.set_gain(gain, reason=reason)
+
+    def reset_dynamics(self) -> None:
+        """막전위·전도도·불응기·지연 ring·흔적을 초기 상태로 되돌린다.
+
+        배율 진단에서 앞 조건의 잔류 상태가 다음 조건으로 새지 않게 할 때 쓴다.
+        고정 파라미터(w0, 배선, P, theta_base)는 건드리지 않는다.
+        """
+        if self.state is not None:
+            self.state.reset()
+        if self.ring is not None:
+            self.ring.reset()
+
     # -- 순방향 실행 ---------------------------------------------------
     def run(self, drive: ExternalDrive, P: Any, n_steps: int, *,
             labels: Any | None = None,
@@ -4999,7 +5557,7 @@ class CorticalModel:
                 if dec.in_window(sp_step):
                     acc += info["q"][:, :, dec.neuron_ids]
                 spikes_by_step[step] = info["n_spikes"]
-                basal_evidence += info["delta_g"][..., exc_rec].sum(dim=(-1, -2))
+                basal_evidence += info["delta_g"][..., COMP_INDEX["basal"], :][..., exc_rec].sum(dim=-1)
                 if step_hook is not None:
                     step_hook(info)
         rates = dec.rates(acc)
@@ -5013,6 +5571,8 @@ class CorticalModel:
             "theta_fast_final": self.state.theta_fast.clone(),
             "duration_s": n_steps * float(self.cfg["engine"]["dt_ms"]) / MS_PER_S,
             "engine_counters": dict(self.engine.counters),
+            # 이 실행에서 **실제로** 쓰인 억제 배율. 예정값이 아니라 실측값이다.
+            "inhibition_gain": self.engine.inhibition.gain,
         }
         if labels is not None:
             loss_mean, loss_per = dec.loss(logits, labels)
@@ -5219,6 +5779,10 @@ class RecurrentCortexNetwork:
         self._build_decoders()
         self.prepared = False
         self.prep_info: dict[str, Any] = {}
+        #: True 면 teacher gate 를 정확히 0 으로 강제한다 (``*_zero_teacher`` 대조).
+        #: 회로·K rounds·물리 스텝 수는 그대로 유지한다. gate=0 이면
+        #: ``t_IT = a_IT`` 이므로 교사 유래 갱신이 정확히 0 이 된다.
+        self.force_zero_teacher = False
 
     # ------------------------------------------------------------------
     def _build_decoders(self) -> None:
@@ -5336,7 +5900,9 @@ class RecurrentCortexNetwork:
         theta_fast : ``[R,B,N]`` 또는 None (None 이면 0 에서 시작)
         context : attention gain 등. ``{"attention": [B,N]}``
         sensory_events : 미리 만든 :class:`ExternalDrive` (± 비교에서 동일 사건 재생용)
-        initial_state : 동적 상태 dict (None 이면 초기화)
+        initial_state : 초기 막 상태 dict (None 이면 휴지 상태).
+            실행 전에 적용한다. 지연 ring은 비우고 시간은 0에서 시작한다.
+            과거 ring/절대 시점을 잇는 중간 재개 기능은 아니다.
         duration : 물리 스텝 수
         collect : 추가로 담을 항목 이름들
         step_hook : 스텝마다 부르는 기록용 콜백. 계산 결과를 바꾸지 않는다.
@@ -5361,10 +5927,11 @@ class RecurrentCortexNetwork:
                 drive = model.make_drive(x, duration, rng_key=key)
             drive = self._apply_attention_to_drive(drive, (context or {}).get("attention"))
             P = model.gains.replicas(None)
-            out = model.run(drive, P, duration, reset=True, theta_fast=theta_fast,
-                            step_hook=step_hook)
-            if initial_state is not None and model.state is not None:
+            if initial_state is not None:
+                model.prepare(int(P.shape[0]), int(drive.values.shape[1]))
                 model.state.load_state_dict(initial_state)
+            out = model.run(drive, P, duration, reset=(initial_state is None),
+                            theta_fast=theta_fast, step_hook=step_hook)
             dur_s = out["duration_s"]
             acts = self.activity.all_activities(out["spike_count"], dur_s) \
                 if self.activity.fitted else {}
@@ -5518,6 +6085,9 @@ class RecurrentCortexNetwork:
         # --- 4. 전두엽 비교 --------------------------------------------
         cmp_free = self.comparator.evaluate(free["logits"], labels)
         gate = cmp_free["teacher_gate"]                       # [R,B]
+        if self.force_zero_teacher:
+            # 같은 회로·같은 round 수·같은 물리 스텝 수를 유지한 채 교사만 끈다.
+            gate = t.zeros_like(gate)
         if teacher_targets is None:
             sel = self.targets.select_prototype(free["h_IT"], labels)
             t_source = sel["target"]
@@ -5642,6 +6212,8 @@ class RecurrentCortexNetwork:
         return {
             "status": "completed", "sample_id": sample_id, "K": self.K,
             "condition": self.condition,
+            "force_zero_teacher": bool(self.force_zero_teacher),
+            "inhibition_gain": self.model.engine.inhibition.gain,
             "teacher_gate_fraction": float(gate.mean()),
             "target_info": target_info,
             "free_before": {
@@ -5709,7 +6281,7 @@ class CalibrationRunner:
     def _free_pass(self, batches: Sequence[dict[str, Any]]) -> dict[str, Any]:
         """준비 표본을 자유 단계로 한 번만 통과시켜 원시 발화율을 모은다.
 
-        ``theta_fast=None``, ``theta_base`` 는 현재 값(초기 15)을 그대로 쓴다.
+        ``theta_fast=None``, ``theta_base`` 는 현재 값(초기 THETA0)을 그대로 쓴다.
         영구 갱신은 하나도 하지 않는다.
         """
         t = require_torch()
@@ -5718,6 +6290,7 @@ class CalibrationRunner:
         labels: list[Any] = []
         images_small: list[Any] = []
         dur_s = 0.0
+        stage_totals: dict[str, dict[str, Any]] = {}
         for bi, batch in enumerate(batches):
             x = batch["normalized"]
             drive = self.model.make_drive(x, n_steps,
@@ -5729,6 +6302,15 @@ class CalibrationRunner:
             for area in self.net.activity.order:
                 r = self.net.activity.rates_hz(out["spike_count"], dur_s, area)
                 rates.setdefault(area, []).append(r[0])         # [B, n_l]
+            for area in self.net.activity.order:
+                row = stage_totals.setdefault(area, {"L4_spikes": 0, "L23_spikes": 0,
+                                                    "L4_basal_exc_sum_nS": 0.0,
+                                                    "L23_basal_exc_sum_nS": 0.0})
+                for tag, layers, cell in (("L4", ["L4"], ["spiny_stellate"]),
+                                           ("L23", ["L2", "L3"], ["pyramidal"])):
+                    ids = self.model.neurons.indices_of(area, layers, cell)
+                    row[f"{tag}_spikes"] += int(out["spike_count"][:, :, ids].sum())
+                    row[f"{tag}_basal_exc_sum_nS"] += float(out["basal_evidence"][:, :, ids].sum())
             labels.append(batch["labels"])
             tgt = batch.get("recon_target")
             if tgt is not None:
@@ -5736,7 +6318,8 @@ class CalibrationRunner:
         merged = {a: t.cat(v, dim=0) for a, v in rates.items()}
         return {"rates": merged, "labels": t.cat(labels, dim=0),
                 "recon_target": (t.cat(images_small, dim=0) if images_small else None),
-                "duration_s": dur_s, "n_batches": len(batches)}
+                "duration_s": dur_s, "n_batches": len(batches),
+                "sensory_stage_totals": stage_totals}
 
     # ------------------------------------------------------------------
     def prepare(self, batches: Sequence[dict[str, Any]]) -> dict[str, Any]:
@@ -5775,7 +6358,8 @@ class CalibrationRunner:
         if h is None or n_samples < 2:
             return {"status": STATUS_INSUFFICIENT_SIGNAL,
                     "reason_ko": "최상위 영역 활동을 만들 수 없다",
-                    "rate_scale": scale_info}
+                    "rate_scale": scale_info,
+                    "sensory_stage_totals": free["sensory_stage_totals"]}
         between = float(h.var(dim=0, unbiased=False).mean())
         active_frac = float((h > 0).to(self.net.dtype).mean())
         pairwise = float((h[:1] - h).abs().max()) if n_samples > 1 else 0.0
@@ -5790,7 +6374,8 @@ class CalibrationRunner:
                 "동률 argmax 가 나오므로 임의 정확도를 출력하지 않고 중단한다.")
             self.log("[준비] IT 신호 부족으로 중단한다.")
             return {"status": STATUS_INSUFFICIENT_SIGNAL, "it_variability": it_check,
-                    "rate_scale": scale_info}
+                    "rate_scale": scale_info,
+                    "sensory_stage_totals": free["sensory_stage_totals"]}
         it_check["status"] = "ok"
 
         labels = free["labels"]
@@ -5840,6 +6425,7 @@ class CalibrationRunner:
             "status": "completed",
             "n_prep_samples": n_samples,
             "duration_s": free["duration_s"],
+            "sensory_stage_totals": free["sensory_stage_totals"],
             "rate_scale": scale_info,
             "attention_scale": att_info,
             "it_variability": it_check,
@@ -6115,6 +6701,9 @@ EVENT_FIELDS: tuple[str, ...] = (
     "parent_spike_id", "src_id", "dst_id", "synapse_id", "emit_step", "arrival_step",
     "compartment", "receptor", "w0_snapshot", "P_emit_snapshot", "amount",
     "amount_unit_code",
+    # 발신 당시의 억제 배율과 유효 발신량 q = P * s * gain (명세 9절).
+    # 현재 시점의 값이 아니라 **그 사건이 발신될 때**의 값이다.
+    "inhibition_gain_emit", "q_emit_snapshot",
 )
 #: 기록 행의 phase 코드. legacy SPSA 의 base/plus/minus 와 이번 임계값 학습의
 #: free(교사 전) / guided(교사 유도 round) / post(교사 제거 후) 를 모두 구분한다.
@@ -6560,7 +7149,19 @@ class CheckpointManager:
         return base.with_suffix(".json")
 
     def list(self) -> list[Path]:
-        return sorted(self.dir.glob("*.json"))
+        valid: list[Path] = []
+        for path in sorted(self.dir.glob("*.json")):
+            if not path.with_suffix(".npz").is_file():
+                continue
+            try:
+                meta = read_json(path)
+            except (OSError, ValueError):
+                continue
+            if (isinstance(meta, dict) and meta.get("committed") is True
+                    and isinstance(meta.get("checkpoint_version"), int)
+                    and isinstance(meta.get("tensor_keys"), list)):
+                valid.append(path)
+        return valid
 
     def latest(self) -> Path | None:
         items = self.list()
@@ -6568,7 +7169,13 @@ class CheckpointManager:
             return None
         return max(items, key=lambda p: p.stat().st_mtime)
 
-    def load(self, path: Path) -> tuple[dict[str, Any], dict[str, np.ndarray]]:
+    def load(self, path: Path | None) -> tuple[dict[str, Any], dict[str, np.ndarray]]:
+        if path is None:
+            raise FileNotFoundError(
+                f"완료된 미니배치 체크포인트가 없다: {self.dir}. "
+                "preparation.json/train.json의 status를 먼저 확인하라. "
+                "insufficient_signal이면 학습이 시작되지 않아 재개할 상태가 없다.")
+        path = Path(path)
         meta = read_json(path)
         if int(meta.get("checkpoint_version", -1)) != self.VERSION:
             raise RuntimeError(
@@ -6634,7 +7241,7 @@ UNSUPPORTED_LEARNING: dict[str, str] = {
 #: legacy(P-only) 모드에서만 유효한 금지 항목. 이번 기본 조건에서는 theta_base 가
 #: 학습 대상이므로 ``threshold_adaptation`` 을 여기에 두지 않는다.
 LEGACY_UNSUPPORTED_LEARNING: dict[str, str] = {
-    "threshold_adaptation": ("legacy P-only 조건에서는 임계값이 고정 15 다. "
+    "threshold_adaptation": ("legacy P-only 조건에서는 임계값이 초기값 10 으로 고정된다. "
                              "임계값을 학습하려면 THRESHOLD_CONDITIONS 를 쓰라."),
 }
 
@@ -6995,7 +7602,7 @@ class ThresholdLearningTrainer:
 
     # ------------------------------------------------------------------
     def theta_change(self) -> dict[str, Any]:
-        """초기 15 에서 지금까지의 ``theta_base`` 변화 요약."""
+        """초기 THETA0 에서 지금까지의 ``theta_base`` 변화 요약."""
         require_torch()
         cur = self.model.neurons.theta_base
         d = cur - self.theta_base_initial
@@ -7118,10 +7725,13 @@ class EventCapture:
         if self.edge_idx.numel() == 0:
             return
         parts_src, parts_edge, parts_amt, parts_delay = [], [], [], []
+        parts_q: list[Any] = []
         for delay, sub in self.groups:
             past = ring.read(step, delay)
             if past is None:
                 continue
+            # ring 에 든 q 는 **발신 시점에 이미 억제 배율이 곱해진** 값이다.
+            # 여기서 현재 배율을 다시 곱하지 않는다.
             q = past[replica, batch_row][syn.src[sub]]
             amount = q * syn.w0_nS[sub]
             nz = t.nonzero(amount > 0, as_tuple=False).flatten()
@@ -7130,18 +7740,21 @@ class EventCapture:
             parts_edge.append(sub[nz])
             parts_src.append(syn.src[sub[nz]])
             parts_amt.append(amount[nz])
+            parts_q.append(q[nz])
             parts_delay.append(t.full((int(nz.numel()),), delay, dtype=t.long,
                                       device=self.model.device))
         if not parts_edge:
             return
         edge = t.cat(parts_edge)
         amt = t.cat(parts_amt)
+        q_emit = t.cat(parts_q)
         delay = t.cat(parts_delay)
         n = int(edge.numel())
         self.n_arrived += n
         if n > self.max_rows:
             self.n_filtered += n - self.max_rows
             edge, amt, delay = edge[:self.max_rows], amt[:self.max_rows], delay[:self.max_rows]
+            q_emit = q_emit[:self.max_rows]
             n = self.max_rows
         dst = syn.dst[edge]
         src = syn.src[edge]
@@ -7173,6 +7786,17 @@ class EventCapture:
             arr[:, col["P_emit_snapshot"]] = P[replica][src].detach().to("cpu").numpy()
         arr[:, col["amount"]] = amt.detach().to("cpu").numpy()
         arr[:, col["amount_unit_code"]] = AMOUNT_UNIT_CODES["nS"]
+        # 유효 발신량 q = P * s * gain (발신 시점 값 그대로).
+        arr[:, col["q_emit_snapshot"]] = q_emit.detach().to("cpu").numpy()
+        # 발신 당시 배율을 스텝별 기록에서 되찾는다. 현재 배율을 과거 발신
+        # 스냅샷이라고 저장하지 않는다 (명세 9절).
+        emit_steps = arr[:, col["emit_step"]].astype(np.int64)
+        engine = getattr(self.model, "engine", None)
+        if engine is not None and hasattr(engine, "gain_at_emit"):
+            arr[:, col["inhibition_gain_emit"]] = np.array(
+                [engine.gain_at_emit(int(e)) for e in emit_steps], dtype=np.float64)
+        else:
+            arr[:, col["inhibition_gain_emit"]] = np.nan
         for tgt, eid in zip(arr[:, col["dst_id"]].astype(np.int64), ids):
             self.last_event_id_per_target[int(tgt)] = int(eid)   # 표적별 마지막 ID
         self.rows.append(arr)
@@ -7226,62 +7850,623 @@ def state_rows(model: CorticalModel, info: dict[str, Any], selected: Sequence[in
     return arr
 
 
+def assess_sensory_transmission(by_area: dict[str, Any],
+                                by_stage: dict[str, Any],
+                                cortical_order: Sequence[str]) -> dict[str, Any]:
+    """저장 가능한 수치만으로 전체 경로를 판정한다. V1의 일부 발화로 통과하지 않는다."""
+    chain = [a for a in ("Retina", "LGN") if a in by_area] + list(cortical_order)
+    issues: list[dict[str, str]] = []
+    for area in chain:
+        if area not in by_area or by_area[area].get("total_spikes", 0) <= 0:
+            issues.append({"area": area, "stage": "all", "reason": "no_spikes"})
+        if area in cortical_order:
+            for stage in ("L4_excitatory", "L23_excitatory"):
+                row = by_stage.get(area, {}).get(stage, {})
+                if row.get("n_neurons", 0) == 0:
+                    issues.append({"area": area, "stage": stage, "reason": "missing_population"})
+                elif row.get("total_spikes", 0) <= 0:
+                    reason = ("basal_input_without_spikes" if row.get("basal_exc_arrival_sum_nS", 0) > 0
+                              else "no_basal_excitation_or_spikes")
+                    issues.append({"area": area, "stage": stage, "reason": reason})
+    broken = [a for a in chain if any(r["area"] == a for r in issues)]
+    return {"chain_areas": chain, "chain_ok": not issues,
+            "silent_chain_areas": broken, "failed_stages": issues,
+            "first_failed_stage": issues[0] if issues else None}
+
+
+def diagnostic_state_signature(model: CorticalModel) -> dict[str, Any]:
+    """진단이 보존해야 할 실제 모델 상태의 해시 (별도 새 RNG를 검사하지 않는다)."""
+    dynamic = None
+    if model.state is not None:
+        dynamic = {k: tensor_hash(getattr(model.state, k)) for k in
+                   ("V", "g", "refrac_until", "last_spike", "spike_count",
+                    "last_u", "theta_fast", "theta_eff")}
+    return {"fixed": model._compute_fixed_hashes(),
+            "theta_base": tensor_hash(model.neurons.theta_base),
+            "theta_trainable": tensor_hash(model.neurons.theta_trainable),
+            "z": tensor_hash(model.gains.z), "P": tensor_hash(model.gains.P()),
+            "dynamic": dynamic,
+            "ring": None if model.ring is None else tensor_hash(model.ring.buf),
+            "engine_counters": dict(model.engine.counters),
+            "encoder": sha256_text(dumps(model.encoder.state_dict())),
+            "decoder": model.decoder.signature,
+            "rng": sha256_text(dumps(model.seeds.state_dict()))}
+
+
+def passive_compartment_audit() -> dict[str, Any]:
+    """단일 구획 보정의 한계를 점검하는 수동 다구획 정상상태 계산. 파라미터 변경 없음."""
+    rows: list[dict[str, Any]] = []
+    erev = float(RECEPTOR_PARAMS["AMPA"]["E_rev_mV"])
+    for name, spec in CELL_TYPES.items():
+        names = list(spec["compartments"])
+        leak = np.array([spec["gL_nS"][c] for c in names], dtype=float)
+        rest = np.array([spec["EL_mV"][c] for c in names], dtype=float)
+        matrix = np.diag(leak)
+        for j, comp in enumerate(names[1:], 1):
+            gc = float(spec["g_couple_nS"].get(comp, 0.0))
+            matrix[0, 0] += gc; matrix[j, j] += gc
+            matrix[0, j] -= gc; matrix[j, 0] -= gc
+        v0 = np.linalg.solve(matrix, leak * rest)
+        vth = rest[0] + THETA0 * V_UNIT_MV
+        delta = vth - v0[0]
+        naive = float(leak[0] * (vth - rest[0]) / (erev - vth))
+        for j, comp in enumerate(names):
+            impulse = np.zeros(len(names)); impulse[j] = 1.0
+            response = np.linalg.solve(matrix, impulse)
+            den = response[0] * (erev - v0[j]) - delta * response[j]
+            need = float(delta / den) if den > 0 else None
+            predicted = v0 + naive * (erev - v0[j]) / (1 + naive * response[j]) * response
+            rows.append({"cell_type": name, "target_compartment": comp,
+                         "soma_only_g_need_nS": naive,
+                         "passive_multicompartment_g_need_nS": need,
+                         "ratio_to_soma_only": None if need is None else need / naive,
+                         "soma_u_at_soma_only_g": float((predicted[0] - rest[0]) / V_UNIT_MV)})
+    return {"rows": rows, "changes_parameters": False,
+            "audited_initial_threshold_mV": THETA0,
+            "w0_calibration_reference_threshold_mV": WEIGHT_CALIBRATION_THRESHOLD,
+            "note_ko": (f"실제 초기 임계값 {THETA0} mV에서의 AMPA 연속 전도도, "
+                        "무억제, 무발화/리셋 수동 정상상태 비교다. "
+                        f"초기 w0는 별도 기준 {WEIGHT_CALIBRATION_THRESHOLD} mV의 "
+                        "soma-only 근사로 보정하며 basal/apical 감쇠를 생략한다. "
+                        "이 값만으로 동적 신호 실패 원인을 확정하거나 가중치를 바꾸지 않는다.")}
+
+
 def transmission_diagnostic(model: CorticalModel, stim: Stimulus, n_steps: int
                             ) -> dict[str, Any]:
-    """망막 -> LGN -> V1 전달 진단 (학습 전에 본다).
+    """정규화가 준비된 모델을 읽기 전용으로 진단한다. 실행 상태는 성공/예외 모두 복원."""
+    saved = (model.state, model.ring, model.gains.P(), model.engine.counters, model.seeds)
+    diagnostic_seeds = SeedStreams(model.seeds.master_seed)
+    diagnostic_seeds.load_state_dict(model.seeds.state_dict())
+    model.state, model.ring = None, None
+    model.seeds = diagnostic_seeds
+    try:
+        return _transmission_diagnostic_inplace(model, stim, n_steps)
+    finally:
+        model.state, model.ring, current_P, model.engine.counters, model.seeds = saved
+        model.gains.set_current(current_P)
 
-    입력 코드값, 주입량, **실제 발화율**, 도착 사건 수, 전도도, 임계 여유를
-    각각 보고한다. 전달이 약하다고 임계값을 낮추거나 라벨을 입력에 넣지 않는다.
-    """
+
+def _transmission_diagnostic_inplace(model: CorticalModel, stim: Stimulus,
+                                    n_steps: int) -> dict[str, Any]:
     t = require_torch()
+    if n_steps < 1:
+        raise ValueError("진단 스텝 수는 1 이상이어야 한다.")
     img = t.tensor(np.stack([stim.frames[0]]).transpose(0, 3, 1, 2),
                    dtype=model.dtype, device=model.device)
     normalized, meta = model.encode_batch(img)
-    drive = model.make_drive(normalized, n_steps)
+    drive = model.make_drive(normalized, n_steps, rng_key=("measurement", 0))
     P = model.gains.replicas(None)
-    peak_u: dict[str, float] = {}
-    out = model.run(drive, P, n_steps)
     a = model.neurons
-    by_area: dict[str, Any] = {}
+    peak_u = t.full((a.n,), -float("inf"), dtype=model.dtype, device=model.device)
+    peak_basal_u = t.full_like(peak_u, -float("inf"))
+    peak_basal_g = t.zeros_like(peak_u)
+    first_spike = t.full((a.n,), -1, dtype=t.long, device=model.device)
+    def observe(info: dict[str, Any]) -> None:
+        peak_u.copy_(t.maximum(peak_u, info["u"][0, 0]))
+        basal_u = (model.state.V[0, 0, :, COMP_INDEX["basal"]]
+                   - a.EL_mV[:, COMP_INDEX["basal"]]) / V_UNIT_MV
+        peak_basal_u.copy_(t.maximum(peak_basal_u, basal_u))
+        g = model.state.g[0, 0, :, COMP_INDEX["basal"], RECEPTOR_INDEX["AMPA"]]
+        peak_basal_g.copy_(t.maximum(peak_basal_g, g))
+        new = info["spikes"][0, 0] & (first_spike < 0)
+        first_spike.copy_(t.where(new, int(info["spike_step"]), first_spike))
+    out = model.run(drive, P, n_steps, step_hook=observe)
     duration_s = n_steps * float(model.cfg["engine"]["dt_ms"]) / MS_PER_S
-    for aname in a.area_names:
-        idx = a.indices_of(aname)
+    def summarize(idx: Any) -> dict[str, Any]:
         if int(idx.numel()) == 0:
-            continue
-        spikes = out["spike_count"][0, 0][idx]
-        u = model.state.last_u[0, 0][idx]
-        g_soma = model.state.g[0, 0][idx, COMP_INDEX["soma"]].sum(dim=-1)
-        by_area[aname] = {
-            "n_neurons": int(idx.numel()),
-            "total_spikes": int(spikes.sum()),
+            return {"n_neurons": 0, "total_spikes": 0, "basal_exc_arrival_sum_nS": 0.0}
+        spikes = out["spike_count"][0, 0, idx]
+        u = model.state.last_u[0, 0, idx]
+        theta = model.state.theta_eff[0, 0, idx]
+        first = first_spike[idx]; first = first[first >= 0]
+        return {
+            "n_neurons": int(idx.numel()), "total_spikes": int(spikes.sum()),
+            "n_active_neurons": int((spikes > 0).sum()),
             "mean_rate_hz": float(spikes.to(model.dtype).mean() / duration_s),
             "max_rate_hz": float(spikes.max().to(model.dtype) / duration_s),
             "silent_fraction": float((spikes == 0).to(model.dtype).mean()),
-            "final_u_max": float(u.max()),
-            "final_u_mean": float(u.mean()),
-            "threshold_margin_u_max": float(u.max() - THRESHOLD),
-            "final_g_soma_nS_max": float(g_soma.max()),
-        }
-        peak_u[aname] = float(u.max())
-    chain = ["Retina", "LGN", "V1"]
-    broken: list[str] = []
-    for i, aname in enumerate(chain):
-        if aname in by_area and by_area[aname]["total_spikes"] == 0:
-            broken.append(aname)
+            "final_u_max": float(u.max()), "final_u_mean": float(u.mean()),
+            "threshold_margin_u_max": float((u - theta).max()),
+            "peak_soma_u": float(peak_u[idx].max()),
+            "peak_basal_u": float(peak_basal_u[idx].max()),
+            "peak_threshold_margin_u": float((peak_u[idx] - theta).max()),
+            "peak_basal_AMPA_nS": float(peak_basal_g[idx].max()),
+            "basal_exc_arrival_sum_nS": float(out["basal_evidence"][0, 0, idx].sum()),
+            "final_g_soma_nS_max": float(model.state.g[0, 0, idx, COMP_INDEX["soma"]].sum(dim=-1).max()),
+            "first_spike_ms": (float(first.min()) * model.engine.dt if first.numel() else None)}
+    by_area = {name: summarize(a.indices_of(name)) for name in a.area_names}
+    cortex = sorted((name for name in a.area_names if model.cfg["areas"][name]["kind"] == "cortex"),
+                    key=lambda name: model.cfg["areas"][name]["level"])
+    by_stage: dict[str, Any] = {}
+    by_population: dict[str, Any] = {}
+    for name in cortex:
+        by_stage[name] = {
+            "L4_excitatory": summarize(a.indices_of(name, ["L4"], ["spiny_stellate"])),
+            "L23_excitatory": summarize(a.indices_of(name, ["L2", "L3"], ["pyramidal"]))}
+        by_population[name] = {}
+        for layer in model.cfg["areas"][name]["neurons_per_layer"]:
+            for cell in a.cell_type_names:
+                ids = a.indices_of(name, [layer], [cell])
+                if int(ids.numel()):
+                    by_population[name][f"{layer}/{cell}"] = summarize(ids)
     return {
         "stimulus_id": stim.stimulus_id, "n_steps": n_steps,
         "input_code": {"min": float(normalized.min()), "max": float(normalized.max()),
                        "mean": float(normalized.mean())},
         "drive": {"mode": drive.mode, "unit": drive.meta["drive_unit"],
-                  "max_value": float(drive.values.max()),
-                  "mean_value": float(drive.values.mean())},
+                  "max_value": float(drive.values.max()), "mean_value": float(drive.values.mean())},
         "sampling": {k: v for k, v in meta.items() if k != "normalization"},
-        "by_area": by_area, "silent_chain_areas": broken,
-        "chain_ok": not broken,
+        "by_area": by_area, "by_stage": by_stage, "by_population": by_population,
+        **assess_sensory_transmission(by_area, by_stage, cortex),
         "engine_counters": out["engine_counters"],
-        "note_ko": ("입력 코드값·주입량·실제 발화율은 서로 다른 값이다. 평균 정상상태 "
-                    "근사만으로 '절대 불가능' 을 단정하지 않는다. 전달이 약하면 "
-                    "임계값을 낮추지 말고 w0·입력 단위 설정을 새 실행으로 바꿔라."),
+        "note_ko": ("설정된 모든 영역과 L4 E -> L2/L3 E를 검사한다. 생리학적 기능이나 "
+                    "분류 성능을 입증하는 검사가 아니다. 기저 입력 합은 도착 전도도의 누적이며 전하가 아니다. "
+                    "진단은 임계값/배선/정규화를 갱신하지 않는다.")}
+
+
+# ======================================================================
+# 13-1. 억제 배율 진단 탐침 (작업 A / B 공용)
+# ======================================================================
+def inhibition_probe(model: CorticalModel, stims: Sequence[Stimulus], n_steps: int,
+                     *, rng_key: tuple[str, int] = ("measurement", 0),
+                     repeat_stimulus_index: int = 0, n_repeats: int = 2
+                     ) -> dict[str, Any]:
+    """현재 억제 배율에서 영역·층·세포 유형별 상태를 측정한다 (명세 5절).
+
+    **학습을 하지 않는다.** theta_base, theta_fast, P, w0, 배선, 준비 산출물,
+    정규화 계수를 하나도 바꾸지 않는다. 같은 입력·같은 난수를 쓰며, 호출한 쪽이
+    조건 사이에 :meth:`CorticalModel.reset_dynamics` 로 잔류 상태를 지운다.
+
+    Parameters
+    ----------
+    stims : 고정 진단 묶음. 여러 방향·위치의 도형과 **무입력**을 포함해야 한다.
+        진단용 자극 하나만으로 판단하지 않는다.
+    repeat_stimulus_index : 같은 입력을 여러 번 넣어 잡음 변동을 재는 대상.
+    n_repeats : 그 반복 횟수 (2 이상이어야 잡음 변동을 잴 수 있다).
+
+    Returns
+    -------
+    dict : ``by_area`` / ``by_stage`` / ``by_population`` / ``inhibitory_effect`` /
+    ``it_separability`` / ``blank_response`` / ``saturation`` / ``numerics`` /
+    ``receptor_arrivals``. 판정은 호출한 쪽이 공개된 기준으로 내린다.
+    """
+    t = require_torch()
+    if n_steps < 1:
+        raise ValueError("진단 스텝 수는 1 이상이어야 한다.")
+    if not stims:
+        raise ValueError("진단 자극 묶음이 비어 있다.")
+    a = model.neurons
+    dt = float(model.cfg["engine"]["dt_ms"])
+    duration_s = n_steps * dt / MS_PER_S
+    dev, dtp = model.device, model.dtype
+    exc_rec = [RECEPTOR_INDEX["AMPA"], RECEPTOR_INDEX["NMDA"]]
+    gaba = RECEPTOR_INDEX["GABA_A"]
+    inh_ids = t.nonzero(a.dale < 0, as_tuple=False).flatten()
+    exc_ids = t.nonzero(a.dale > 0, as_tuple=False).flatten()
+    # 불응기와 시간 간격을 고려한 **최대 가능 발화 수** (포화 판정의 분모)
+    max_possible = t.clamp(
+        t.floor(t.tensor(float(n_steps), dtype=dtp, device=dev)
+                / t.clamp(model.engine.t_ref_steps.to(dtp) + 1.0, min=1.0)),
+        min=1.0)
+
+    prev_count_flag = model.engine.count_nonzero_arrivals
+    model.engine.count_nonzero_arrivals = True
+    per_stim: list[dict[str, Any]] = []
+    it_vectors: list[Any] = []
+    repeat_vectors: list[Any] = []
+    nan_seen = False
+    try:
+        order: list[tuple[int, Stimulus, int]] = [
+            (i, st, 0) for i, st in enumerate(stims)]
+        ridx = int(min(max(repeat_stimulus_index, 0), len(stims) - 1))
+        for r in range(1, max(2, int(n_repeats))):
+            order.append((ridx, stims[ridx], r))
+
+        for stim_index, stim, rep in order:
+            model.reset_dynamics()
+            img = t.tensor(np.stack([stim.frames[0]]).transpose(0, 3, 1, 2),
+                           dtype=dtp, device=dev)
+            normalized, _meta = model.encode_batch(img)
+            # 같은 난수를 쓴다. 반복 측정은 자극 인덱스만 같고 키도 같다.
+            drive = model.make_drive(normalized, n_steps,
+                                     rng_key=(rng_key[0], rng_key[1] + stim_index))
+            P = model.gains.replicas(None)
+            # 누적기: [N, C, Rc] 도착 전도도, [N] 첫 발화, 구획별 전압 최대/합
+            arr_sum = t.zeros((a.n, N_COMP, N_RECEPTOR), dtype=dtp, device=dev)
+            peak_V = t.full((a.n, N_COMP), -float("inf"), dtype=dtp, device=dev)
+            sum_V = t.zeros((a.n, N_COMP), dtype=dtp, device=dev)
+            peak_margin = t.full((a.n,), -float("inf"), dtype=dtp, device=dev)
+            first_spike = t.full((a.n,), -1, dtype=t.long, device=dev)
+            q_emit_sum = t.zeros(a.n, dtype=dtp, device=dev)
+            q_pre_sum = t.zeros(a.n, dtype=dtp, device=dev)
+
+            def observe(info: dict[str, Any]) -> None:
+                arr_sum.add_(info["delta_g"][0, 0])
+                V = model.state.V[0, 0]
+                peak_V.copy_(t.maximum(peak_V, V))
+                sum_V.add_(V)
+                peak_margin.copy_(t.maximum(
+                    peak_margin, info["u"][0, 0] - info["theta_eff"][0, 0]))
+                new = info["spikes"][0, 0] & (first_spike < 0)
+                first_spike.copy_(t.where(new, int(info["spike_step"]), first_spike))
+                q_emit_sum.add_(info["q"][0, 0])
+                q_pre_sum.add_(info["q_pre_inhibition"][0, 0])
+
+            out = model.run(drive, P, n_steps, step_hook=observe)
+            counters = out["engine_counters"]
+            spikes = out["spike_count"][0, 0]
+            mean_V = sum_V / float(n_steps)
+            finite = bool(t.isfinite(model.state.V).all()
+                          and t.isfinite(arr_sum).all())
+            nan_seen = nan_seen or (not finite)
+
+            def summarize(idx: Any) -> dict[str, Any]:
+                if int(idx.numel()) == 0:
+                    return {"n_neurons": 0, "total_spikes": 0,
+                            "reason": "이 집단이 설정에 없다"}
+                sp = spikes[idx]
+                first = first_spike[idx]
+                first = first[first >= 0]
+                sat = (sp.to(dtp) / max_possible[idx]).clamp(max=1.0)
+                row: dict[str, Any] = {
+                    "n_neurons": int(idx.numel()),
+                    "total_spikes": int(sp.sum()),
+                    "n_active_neurons": int((sp > 0).sum()),
+                    "active_fraction": float((sp > 0).to(dtp).mean()),
+                    "silent_fraction": float((sp == 0).to(dtp).mean()),
+                    "mean_rate_hz": float(sp.to(dtp).mean() / duration_s),
+                    "max_rate_hz": float(sp.max().to(dtp) / duration_s),
+                    "saturation_fraction_mean": float(sat.mean()),
+                    "saturation_fraction_max": float(sat.max()),
+                    "n_at_max_possible": int((sat >= 1.0 - 1e-9).sum()),
+                    "first_spike_ms": (float(first.min()) * dt
+                                       if int(first.numel()) else None),
+                    "peak_threshold_margin_u": float(peak_margin[idx].max()),
+                    "final_threshold_margin_u": float(
+                        (model.state.last_u[0, 0, idx]
+                         - model.state.theta_eff[0, 0, idx]).max()),
+                }
+                for ci, cname in enumerate(COMPARTMENTS):
+                    has = a.has_comp[idx, ci]
+                    if not bool(has.any()):
+                        row[f"peak_V_{cname}_mV"] = None
+                        row[f"mean_V_{cname}_mV"] = None
+                        continue
+                    sel = idx[has]
+                    row[f"peak_V_{cname}_mV"] = float(peak_V[sel, ci].max())
+                    row[f"mean_V_{cname}_mV"] = float(mean_V[sel, ci].mean())
+                # 수용체별 도착 전도도 누적 [nS·step] (전류가 아니다)
+                for rname, ri in RECEPTOR_INDEX.items():
+                    row[f"arrival_{rname}_nS_sum"] = float(arr_sum[idx][:, :, ri].sum())
+                row["arrival_excitatory_nS_sum"] = float(
+                    arr_sum[idx][:, :, exc_rec].sum())
+                row["arrival_basal_excitatory_nS_sum"] = float(
+                    arr_sum[idx][:, COMP_INDEX["basal"]][:, exc_rec].sum())
+                row["arrival_inhibitory_nS_sum"] = float(arr_sum[idx][:, :, gaba].sum())
+                row["emitted_q_sum"] = float(q_emit_sum[idx].sum())
+                row["emitted_q_sum_before_inhibition_gain"] = float(
+                    q_pre_sum[idx].sum())
+                # 입력이 도달했는데 발화하지 않은 경우와 입력부터 없는 경우의 분리
+                got_input = row["arrival_excitatory_nS_sum"] > 0.0
+                if row["total_spikes"] == 0:
+                    row["silent_reason"] = ("input_arrived_but_no_spike" if got_input
+                                            else "no_excitatory_input_at_all")
+                else:
+                    row["silent_reason"] = None
+                return row
+
+            by_area = {name: summarize(a.indices_of(name)) for name in a.area_names}
+            cortex = sorted(
+                (name for name in a.area_names
+                 if model.cfg["areas"][name]["kind"] == "cortex"),
+                key=lambda name: model.cfg["areas"][name]["level"])
+            by_stage: dict[str, Any] = {}
+            by_population: dict[str, Any] = {}
+            for name in cortex:
+                by_stage[name] = {
+                    "L4_excitatory": summarize(
+                        a.indices_of(name, ["L4"], ["spiny_stellate"])),
+                    "L23_excitatory": summarize(
+                        a.indices_of(name, ["L2", "L3"], ["pyramidal"])),
+                }
+                by_population[name] = {}
+                for layer in model.cfg["areas"][name]["neurons_per_layer"]:
+                    for cell in a.cell_type_names:
+                        ids = a.indices_of(name, [layer], [cell])
+                        if int(ids.numel()):
+                            by_population[name][f"{layer}/{cell}"] = summarize(ids)
+
+            inhibitory = summarize(inh_ids) if int(inh_ids.numel()) else {"n_neurons": 0}
+            excitatory = summarize(exc_ids) if int(exc_ids.numel()) else {"n_neurons": 0}
+            # IT (최상위 피질) L2/L3 흥분성 활동 벡터
+            top = cortex[-1] if cortex else None
+            it_ids = (a.indices_of(top, ["L2", "L3"], ["pyramidal"])
+                      if top else t.zeros(0, dtype=t.long, device=dev))
+            it_vec = (spikes[it_ids].to(dtp) / duration_s
+                      if int(it_ids.numel()) else t.zeros(0, dtype=dtp, device=dev))
+            entry = {
+                "stimulus_id": stim.stimulus_id, "label": stim.label,
+                "repeat_index": rep, "stimulus_index": stim_index,
+                "is_blank": stim.meta.get("role") == "무입력 대조"
+                or stim.label in ("uniform", "blank"),
+                "by_area": by_area, "by_stage": by_stage,
+                "by_population": by_population,
+                "inhibitory_population": inhibitory,
+                "excitatory_population": excitatory,
+                "engine_counters": counters,
+                "finite": finite,
+                "inhibition_gain": out["inhibition_gain"],
+                **assess_sensory_transmission(by_area, by_stage, cortex),
+            }
+            per_stim.append(entry)
+            if rep == 0:
+                it_vectors.append(it_vec.clone())
+            if stim_index == ridx:
+                repeat_vectors.append(it_vec.clone())
+    finally:
+        model.engine.count_nonzero_arrivals = prev_count_flag
+
+    # ---- IT 구별 가능성: 서로 다른 입력 사이의 거리 vs 같은 입력의 잡음 ----
+    base = [e for e in per_stim if e["repeat_index"] == 0]
+    sep: dict[str, Any] = {"n_stimuli": len(it_vectors)}
+    if len(it_vectors) >= 2 and int(it_vectors[0].numel()) > 0:
+        stack = t.stack(it_vectors)                       # [S, n_IT] Hz
+        pair = t.cdist(stack.unsqueeze(0), stack.unsqueeze(0))[0]
+        off = pair[~t.eye(pair.shape[0], dtype=t.bool, device=dev)]
+        sep.update({
+            "raw_rate_hz": {
+                "between_stimulus_variance": float(stack.var(dim=0,
+                                                             unbiased=False).mean()),
+                "min_pair_distance": float(off.min()) if int(off.numel()) else None,
+                "mean_pair_distance": float(off.mean()) if int(off.numel()) else None,
+                "max_pair_distance": float(off.max()) if int(off.numel()) else None,
+            },
+            "all_vectors_identical": bool(float(off.max()) == 0.0)
+            if int(off.numel()) else None,
+        })
+        scale = float(stack.max()) if float(stack.max()) > 0 else 1.0
+        norm = (stack / scale).clamp(0.0, 1.0)
+        npair = t.cdist(norm.unsqueeze(0), norm.unsqueeze(0))[0]
+        noff = npair[~t.eye(npair.shape[0], dtype=t.bool, device=dev)]
+        sep["normalized_by_observed_max"] = {
+            "scale_hz": scale,
+            "between_stimulus_variance": float(norm.var(dim=0,
+                                                        unbiased=False).mean()),
+            "min_pair_distance": float(noff.min()) if int(noff.numel()) else None,
+            "note_ko": ("여기 정상화는 이 진단 안에서 관측한 최대값으로만 나눈 값이다. "
+                        "학습에 쓰는 rate_scale 과 다르며 진단이 그것을 바꾸지 않는다."),
+        }
+    if len(repeat_vectors) >= 2:
+        rs = t.stack(repeat_vectors)
+        d = t.cdist(rs.unsqueeze(0), rs.unsqueeze(0))[0]
+        roff = d[~t.eye(d.shape[0], dtype=t.bool, device=dev)]
+        sep["same_input_repeat"] = {
+            "n_repeats": int(rs.shape[0]),
+            "max_distance": float(roff.max()) if int(roff.numel()) else 0.0,
+            "mean_distance": float(roff.mean()) if int(roff.numel()) else 0.0,
+            "deterministic_repeats": bool(float(roff.max()) == 0.0)
+            if int(roff.numel()) else None,
+            "note_ko": ("같은 입력을 다시 넣었을 때의 변동이다. 서로 다른 입력 사이의 "
+                        "거리가 이 값보다 크지 않으면 구별한다고 말할 수 없다."),
+        }
+        if sep.get("raw_rate_hz", {}).get("min_pair_distance") is not None:
+            sep["separation_exceeds_repeat_noise"] = bool(
+                sep["raw_rate_hz"]["min_pair_distance"]
+                > sep["same_input_repeat"]["max_distance"])
+
+    blanks = [e for e in base if e["is_blank"]]
+    blank_row = None
+    if blanks:
+        top_area = None
+        for name in reversed(list(blanks[0]["by_stage"])):
+            top_area = name
+            break
+        st = blanks[0]["by_stage"].get(top_area, {}).get("L23_excitatory", {})
+        blank_row = {
+            "stimulus_id": blanks[0]["stimulus_id"],
+            "top_area": top_area,
+            "active_fraction": st.get("active_fraction"),
+            "total_spikes": st.get("total_spikes"),
+            "mean_rate_hz": st.get("mean_rate_hz"),
+            "whole_network_spikes": sum(
+                v.get("total_spikes", 0) for v in blanks[0]["by_area"].values()),
+        }
+
+    sat_rows = {}
+    for e in base:
+        for area, pops in e["by_population"].items():
+            for key, row in pops.items():
+                cur = sat_rows.setdefault(f"{area}/{key}", 0.0)
+                sat_rows[f"{area}/{key}"] = max(cur,
+                                                row.get("saturation_fraction_mean", 0.0))
+    worst = max(sat_rows.values()) if sat_rows else 0.0
+
+    return {
+        "inhibition_gain": model.engine.inhibition.gain,
+        "n_steps": n_steps, "duration_s": duration_s,
+        "stimuli": [s.stimulus_id for s in stims],
+        "n_repeats_of": {"stimulus_id": stims[int(min(max(repeat_stimulus_index, 0),
+                                                      len(stims) - 1))].stimulus_id,
+                         "n": int(max(2, n_repeats))},
+        "per_stimulus": per_stim,
+        "it_separability": sep,
+        "blank_response": blank_row,
+        "saturation": {"max_population_saturation_fraction": worst,
+                       "by_population": sat_rows,
+                       "definition_ko": ("불응기와 시간 간격으로 정해지는 최대 가능 "
+                                         "발화 수 대비 실제 발화 수다.")},
+        "numerics": {"all_finite": not nan_seen,
+                     "note_ko": "NaN/Inf 가 있으면 저장 후 중단한다."},
+        "inhibitory_effect": {
+            "n_inhibitory_neurons": int(inh_ids.numel()),
+            "note_ko": ("배율 0 에서도 억제성 세포 자체는 발화한다. "
+                        "emitted_q_sum 과 emitted_q_sum_before_inhibition_gain 의 "
+                        "차이가 전달 효과 감소분이다."),
+        },
+        "counter_note_ko": ("arrivals_applied 는 값이 0 인 전달까지 포함한 처리 edge "
+                            "수다. 실제 도착 사건 수는 nonzero_arrivals 를 보라."),
+        "measurement_note_ko": ("이 탐침은 학습을 하지 않는다. 임계값·배선·P·w0·"
+                                "정규화 계수를 바꾸지 않는다."),
+    }
+
+
+def build_inhibition_diagnostic_bundle(
+        stims_train: Sequence[Stimulus], diagnostics: Sequence[Stimulus],
+        *, n_shapes: int = 6, seed_note: str = "") -> dict[str, Any]:
+    """고정 진단 묶음을 만든다 (명세 5절).
+
+    방향 줄무늬 하나만으로 충분하다고 판단하지 않는다. 묶음은
+    **여러 방향/위치의 도형 + 여러 방향의 줄무늬 + 무입력**으로 구성하고,
+    표본 ID 와 출처를 기록한다. **시험 세트는 쓰지 않는다** — 도형은 사전에
+    지정한 train 준비 부분집합의 앞쪽에서만 가져온다.
+    """
+    chosen: list[Stimulus] = []
+    provenance: list[dict[str, str]] = []
+
+    # 1) 여러 방향의 줄무늬 (진단 스트림)
+    for st in diagnostics:
+        if st.base_id == "diag_ori" and len(
+                [p for p in provenance if p["source"] == "diagnostic_orientation"]) < 3:
+            chosen.append(st)
+            provenance.append({"stimulus_id": st.stimulus_id,
+                               "source": "diagnostic_orientation"})
+
+    # 2) 클래스가 서로 다른 train 도형 (위치·모양 변이 포함)
+    seen_labels: set[str] = set()
+    for st in stims_train:
+        if len(seen_labels) >= int(n_shapes):
+            break
+        if st.label in seen_labels:
+            continue
+        seen_labels.add(st.label)
+        chosen.append(st)
+        provenance.append({"stimulus_id": st.stimulus_id, "label": st.label,
+                           "base_id": st.base_id,
+                           "source": "train_preparation_subset"})
+
+    # 3) 무입력 대조 (반드시 포함)
+    for st in diagnostics:
+        if st.stimulus_id in ("diag_dark", "diag_uniform"):
+            chosen.append(st)
+            provenance.append({"stimulus_id": st.stimulus_id, "source": "blank"})
+
+    if not chosen:
+        raise RuntimeError("진단 묶음을 만들 자극이 없다.")
+    blanks = [p for p in provenance if p["source"] == "blank"]
+    if not blanks:
+        raise RuntimeError(
+            "진단 묶음에 무입력 대조가 없다. 무입력 반응을 재지 못하면 전달성 "
+            "판정을 신뢰할 수 없다.")
+    return {
+        "stimuli": chosen,
+        "manifest": {
+            "n_stimuli": len(chosen),
+            "n_blank": len(blanks),
+            "n_orientations": len([p for p in provenance
+                                   if p["source"] == "diagnostic_orientation"]),
+            "n_shapes": len(seen_labels),
+            "provenance": provenance,
+            "digest": sha256_text("|".join(s.digest() for s in chosen)),
+            "seed_note": seed_note,
+            "test_split_used": False,
+            "note_ko": ("고정 진단 묶음이다. 여러 방향의 줄무늬, 서로 다른 클래스의 "
+                        "도형, 무입력을 포함한다. 시험 세트는 쓰지 않는다."),
+        },
+    }
+
+
+def judge_inhibition_probe(probe: dict[str, Any], criteria: dict[str, Any]
+                           ) -> dict[str, Any]:
+    """공개된 기준으로 판정한다. ``chain_transmits`` 하나로 축약하지 않는다.
+
+    기준은 설정 파일(``cfg["inhibition"]["criteria"]``)에 있으며 결과를 본 뒤
+    바꾸지 않는다. 네 항목을 각각 보고한다.
+    """
+    base = [e for e in probe["per_stimulus"] if e["repeat_index"] == 0]
+    non_blank = [e for e in base if not e["is_blank"]]
+    cortex_stages = [e["by_stage"] for e in non_blank]
+    min_active = float(criteria["transmits_min_active_fraction"])
+
+    # 1) 전달성: 비무입력 자극에서 각 피질 영역의 L2/L3 흥분성이 반응하는가
+    per_area_ok: dict[str, Any] = {}
+    for stages in cortex_stages:
+        for area, row in stages.items():
+            frac = row.get("L23_excitatory", {}).get("active_fraction", 0.0) or 0.0
+            cur = per_area_ok.setdefault(area, {"max_active_fraction": 0.0})
+            cur["max_active_fraction"] = max(cur["max_active_fraction"], float(frac))
+    for area, row in per_area_ok.items():
+        row["transmits"] = row["max_active_fraction"] >= min_active
+    transmits = bool(per_area_ok) and all(v["transmits"] for v in per_area_ok.values())
+
+    # 2) IT 입력 구별 가능성
+    sep = probe.get("it_separability") or {}
+    raw = sep.get("raw_rate_hz") or {}
+    min_d = raw.get("min_pair_distance")
+    var = raw.get("between_stimulus_variance")
+    distinguishable = bool(
+        min_d is not None and var is not None
+        and min_d >= float(criteria["it_distinguishable_min_pair_distance"])
+        and var >= float(criteria["it_distinguishable_min_variance"]))
+    if sep.get("separation_exceeds_repeat_noise") is False:
+        distinguishable = False
+
+    # 3) 무입력 반응
+    blank = probe.get("blank_response")
+    blank_ok = True
+    if blank is not None and blank.get("active_fraction") is not None:
+        blank_ok = (float(blank["active_fraction"])
+                    <= float(criteria["blank_response_max_active_fraction"]))
+
+    # 4) 포화
+    sat = float(probe["saturation"]["max_population_saturation_fraction"])
+    sat_ok = sat <= float(criteria["saturation_max_fraction"])
+
+    first_failed = None
+    for e in non_blank:
+        if e.get("first_failed_stage"):
+            first_failed = e["first_failed_stage"]
+            break
+
+    return {
+        "criteria_published_in_config": True,
+        "criteria": dict(criteria),
+        "transmits": {"pass": transmits, "by_area": per_area_ok,
+                      "min_active_fraction_required": min_active},
+        "it_distinguishable": {"pass": distinguishable,
+                               "min_pair_distance": min_d,
+                               "between_stimulus_variance": var,
+                               "separation_exceeds_repeat_noise":
+                                   sep.get("separation_exceeds_repeat_noise")},
+        "blank_response_ok": {"pass": blank_ok, "observed": blank},
+        "saturation_ok": {"pass": sat_ok, "max_saturation_fraction": sat},
+        "numerics_ok": bool(probe["numerics"]["all_finite"]),
+        "first_failed_stage": first_failed,
+        "overall_usable_for_training": bool(
+            transmits and distinguishable and blank_ok and sat_ok
+            and probe["numerics"]["all_finite"]),
+        "note_ko": ("네 항목을 각각 보고한다. 하나의 통과 여부로 축약하지 않는다. "
+                    "배율 0 에서도 반응이 없으면 '억제를 더 줄이면 된다' 고 하지 "
+                    "않고 잔여 병목을 따로 기록한다."),
     }
 
 
@@ -7451,6 +8636,7 @@ class ExperimentRunner:
                   and str(tl["condition"]) != "frozen_threshold")
         return {
             "theta0_mV": float(tl["theta0_mV"]), "v_unit_mV": V_UNIT_MV,
+            "w0_calibration_reference_threshold_mV": WEIGHT_CALIBRATION_THRESHOLD,
             "trainable": learns,
             "condition": str(tl["condition"]),
             "trainable_target": (f"{tl['target_layers']} "
@@ -7572,12 +8758,19 @@ class ExperimentRunner:
         ent["events"].append({"utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                               "n": int(n), "note": note})
 
-    def _batch_tensor(self, stims: Sequence[Stimulus]) -> tuple[Any, Any]:
+    def _batch_tensor(self, stims: Sequence[Stimulus], *,
+                      require_labels: bool = True) -> tuple[Any, Any]:
         t = require_torch()
         frames = np.stack([s.frames[0] for s in stims]).transpose(0, 3, 1, 2)
         images = t.tensor(frames, dtype=self.dtype, device=self.device)
+        if not require_labels:
+            return images, None
         classes = list(self.cfg["decoder"]["classes"])
-        labels = t.tensor([classes.index(s.label) for s in stims], dtype=t.long,
+        missing = sorted({st.label for st in stims if st.label not in classes})
+        if missing:
+            raise ValueError(f"지도학습/평가 배치에 알 수 없는 라벨이 있다: {missing}. "
+                             "영상 추론은 require_labels=False 경로를 사용한다.")
+        labels = t.tensor([classes.index(st.label) for st in stims], dtype=t.long,
                           device=self.device)
         return images, labels
 
@@ -7691,7 +8884,7 @@ class ExperimentRunner:
         t = require_torch()
         assert self.model is not None and self.recorder is not None
         model, rec = self.model, self.recorder
-        images, labels = self._batch_tensor(stims)
+        images, labels = self._batch_tensor(stims, require_labels=False)
         frames = max(len(s.frames) for s in stims)
         if frames > 1:
             seq = np.stack([np.stack(s.frames + [s.frames[-1]] * (frames - len(s.frames)))
@@ -7756,6 +8949,805 @@ class ExperimentRunner:
         }
         return info
 
+    # ------------------------------------------------------------------
+    # 억제 점진 복원 실험 (작업 A / B / C)
+    # ------------------------------------------------------------------
+    def _inhibition_bundle(self) -> dict[str, Any]:
+        """이 실행에서 쓸 고정 진단 묶음. 시험 세트는 쓰지 않는다."""
+        n_prep = int(self.cfg["readout_prep"]["n_preparation_samples"])
+        train = list(self.splits["train"])
+        subset = train[:n_prep] if n_prep > 0 else train
+        return build_inhibition_diagnostic_bundle(
+            subset, self.diagnostics,
+            seed_note=f"master_seed={self.cfg['seed']}, split=train_preparation_prefix")
+
+    def _write_layer_metrics(self, probe: dict[str, Any], *, condition: str,
+                             seed: int, epoch: int | None = None,
+                             stage: str | None = None) -> int:
+        """``layer_metrics.jsonl`` 에 영역·층·세포 유형별 행을 남긴다."""
+        assert self.run_dir is not None
+        path = self.run_dir / "layer_metrics.jsonl"
+        n = 0
+        with path.open("a", encoding="utf-8") as fh:
+            for entry in probe["per_stimulus"]:
+                for area, pops in entry["by_population"].items():
+                    for key, row in pops.items():
+                        layer, _, cell = key.partition("/")
+                        fh.write(dumps({
+                            "condition": condition, "seed": int(seed),
+                            "epoch": epoch, "stage": stage,
+                            "inhibition_gain": entry["inhibition_gain"],
+                            "stimulus_id": entry["stimulus_id"],
+                            "repeat_index": entry["repeat_index"],
+                            "is_blank": entry["is_blank"],
+                            "area": area, "layer": layer, "cell_type": cell,
+                            **row}, indent=None) + "\n")
+                        n += 1
+        return n
+
+    def run_inhibition_scan(self, *, values: Sequence[float] | None = None
+                            ) -> dict[str, Any]:
+        """작업 A — **학습 없는** 억제 진단 (명세 5절).
+
+        각 배율을 동일 초기 모델·동일 입력·동일 난수로 **독립적으로** 검사한다.
+        앞 조건의 막전위·잔류 전도도·지연 ring·흔적을 다음 조건으로 가져가지
+        않는다. 모든 학습은 꺼져 있고, 정규화는 train 에서만 적합한 뒤 진단 중
+        바꾸지 않는다.
+        """
+        require_torch()
+        self.setup("inhibition_scan")
+        model = self.build()
+        self.build_data()
+        self.fit_normalization()          # train 으로만 적합하고 이후 고정
+        rec = self.recorder
+        assert rec is not None and self.run_dir is not None
+        vals = [float(v) for v in (values
+                                   if values is not None
+                                   else self.cfg["inhibition"]["scan_values"])]
+        for v in vals:
+            if not (math.isfinite(v)
+                    and INHIBITION_GAIN_MIN <= v <= INHIBITION_GAIN_MAX):
+                raise ValueError(f"배율은 [0, 1] 의 유한수여야 한다: {v!r}")
+        bundle = self._inhibition_bundle()
+        criteria = dict(self.cfg["inhibition"]["criteria"])
+        rec.manifest["inhibition"] = {
+            "task": "inhibition-scan", "values": vals,
+            "criteria_published_before_run": criteria,
+            "diagnostic_bundle": bundle["manifest"],
+            "learning_enabled": False,
+            "gate": model.inhibition.to_dict(),
+        }
+        rec.manifest["assumptions"] = assumptions_rows()
+        rec.manifest["implementation_status"] = implementation_status_rows()
+
+        before_sig = diagnostic_state_signature(model)
+        fixed_before = dict(model.fixed_hashes)
+        theta_before = tensor_hash(model.neurons.theta_base)
+        results: list[dict[str, Any]] = []
+        status, reason = "completed", ""
+        try:
+            for alpha in vals:
+                # 조건 사이에 동역학 상태를 완전히 지운다 (독립 검사)
+                model.reset_dynamics()
+                model.set_inhibition_gain(alpha, reason=f"scan value {alpha}")
+                rec.log(f"[억제 진단] 배율 {alpha} 검사 시작")
+                probe = inhibition_probe(model, bundle["stimuli"], self.n_steps,
+                                         rng_key=("measurement", 0))
+                verdict = judge_inhibition_probe(probe, criteria)
+                n_rows = self._write_layer_metrics(
+                    probe, condition="scan", seed=int(self.cfg["seed"]),
+                    stage="scan")
+                row = {"inhibition_gain": alpha, "verdict": verdict,
+                       "layer_metric_rows": n_rows,
+                       "it_separability": probe["it_separability"],
+                       "blank_response": probe["blank_response"],
+                       "saturation": probe["saturation"],
+                       "numerics": probe["numerics"],
+                       "engine_counters": probe["per_stimulus"][0]["engine_counters"]}
+                results.append({**row, "probe": probe})
+                rec.metric(kind="inhibition_scan", inhibition_gain=alpha,
+                           **{k: v for k, v in verdict.items()
+                              if not isinstance(v, (dict, list))})
+                if not probe["numerics"]["all_finite"]:
+                    status, reason = "failed", (
+                        f"배율 {alpha} 에서 NaN/Inf 가 나왔다. 저장 후 중단한다.")
+                    rec.error(reason)
+                    break
+        except EngineDivergence as exc:
+            status, reason = "failed", str(exc)
+            rec.error("수치 발산으로 중단", exc)
+        finally:
+            # 진단이 끝나면 배율을 설정값으로 되돌리고 상태를 지운다
+            model.set_inhibition_gain(float(self.cfg["inhibition"]["gain"]),
+                                      reason="scan finished: restore config value")
+            model.reset_dynamics()
+
+        after_sig = diagnostic_state_signature(model)
+        unchanged = {
+            "fixed_parameters": model.verify_fixed_unchanged(),
+            "theta_base_unchanged": tensor_hash(model.neurons.theta_base)
+            == theta_before,
+            "fixed_hash_keys_changed": sorted(
+                k for k in fixed_before
+                if fixed_before[k] != model._compute_fixed_hashes().get(k)),
+            "encoder_unchanged": before_sig["encoder"] == after_sig["encoder"],
+            "z_unchanged": before_sig["z"] == after_sig["z"],
+        }
+        summary = self._scan_summary(results, criteria)
+        out = {
+            "task": "inhibition-scan", "status": status, "reason": reason,
+            "values": vals,
+            "criteria": criteria,
+            "diagnostic_bundle": bundle["manifest"],
+            "results": [{k: v for k, v in r.items() if k != "probe"}
+                        for r in results],
+            "per_value_probe": {str(r["inhibition_gain"]): r["probe"]
+                                for r in results},
+            "summary": summary,
+            "no_learning_side_effects": unchanged,
+            "note_ko": ("학습 없는 진단이다. 각 배율을 독립적으로 검사했고 앞 조건의 "
+                        "잔류 상태를 다음 조건으로 넘기지 않았다. 판정 기준은 실행 "
+                        "전에 설정에 공개했다."),
+        }
+        write_json(self.run_dir / "inhibition_scan.json", out)
+        rec.manifest["experiment_status"] = status
+        rec.close(status, reason)
+        return out
+
+    @staticmethod
+    def _scan_summary(results: list[dict[str, Any]],
+                      criteria: dict[str, Any]) -> dict[str, Any]:
+        """배율별 판정을 모아 요약한다. 성공을 전제하지 않는다."""
+        rows = [{"inhibition_gain": r["inhibition_gain"],
+                 "transmits": r["verdict"]["transmits"]["pass"],
+                 "it_distinguishable": r["verdict"]["it_distinguishable"]["pass"],
+                 "blank_response_ok": r["verdict"]["blank_response_ok"]["pass"],
+                 "saturation_ok": r["verdict"]["saturation_ok"]["pass"],
+                 "usable": r["verdict"]["overall_usable_for_training"]}
+                for r in results]
+        usable = [r["inhibition_gain"] for r in rows if r["usable"]]
+        transmit_only = [r["inhibition_gain"] for r in rows if r["transmits"]]
+        zero_rows = [r for r in results if r["inhibition_gain"] == 0.0]
+        bottleneck = None
+        if zero_rows and not zero_rows[0]["verdict"]["transmits"]["pass"]:
+            probe = zero_rows[0]["probe"]
+            first = zero_rows[0]["verdict"].get("first_failed_stage")
+            bottleneck = {
+                "status": "residual_bottleneck_at_zero_inhibition",
+                "first_failed_stage": first,
+                "by_area_transmits": zero_rows[0]["verdict"]["transmits"]["by_area"],
+                "saturation": probe["saturation"][
+                    "max_population_saturation_fraction"],
+                "candidate_causes_ko": [
+                    "basal -> soma 구획 전달 (g_couple, 구획 누설)",
+                    "입력 수·강도 (수렴 수, w0, 외생 구동 세기)",
+                    "시간 창 (sample_ms, 수용체 시상수 대비 관찰 길이)",
+                    ("전도도 보정의 정상상태 근사가 다구획·순간 입력 전달을 "
+                     "보장하지 않는다 (passive_compartment_audit 참조)"),
+                ],
+                "note_ko": ("배율 0 에서도 반응이 없으면 '억제를 더 줄이면 해결된다' "
+                            "고 하지 않는다. 억제는 이미 전달 효과가 0 이다. 원래 "
+                            "설정은 그대로 보존하고 잔여 병목을 기록한다."),
+            }
+        return {
+            "per_value": rows,
+            "usable_for_training": usable,
+            "lowest_usable_gain": min(usable) if usable else None,
+            "highest_usable_gain": max(usable) if usable else None,
+            "transmitting_gains": transmit_only,
+            "zero_gain_bottleneck": bottleneck,
+            "not_reduced_to_single_flag_ko": (
+                "전달성 / IT 구별 가능성 / 무입력 반응 / 포화를 각각 보고한다. "
+                "chain_transmits 하나로 축약하지 않는다."),
+        }
+
+    # ------------------------------------------------------------------
+    def _inhibition_schedule_for(self, condition: str,
+                                 base: InhibitionSchedule) -> InhibitionSchedule:
+        """조건별 일정. 총 에폭 수는 조건 사이에 **같게** 맞춘다."""
+        if condition in ("ramp_local", "ramp_zero_teacher"):
+            return base
+        if condition in ("immediate_local", "immediate_zero_teacher"):
+            return InhibitionSchedule.immediate(base)
+        if condition == "low_fixed":
+            return InhibitionSchedule.constant(base.start, base.total_epochs,
+                                               kind=base.kind)
+        raise ValueError(f"알 수 없는 억제 조건: {condition!r}")
+
+    def _append_schedule_row(self, row: dict[str, Any]) -> None:
+        assert self.run_dir is not None
+        path = self.run_dir / "inhibition_schedule.csv"
+        new = not path.exists()
+        cols = ["condition", "seed", "epoch", "stage", "planned_alpha",
+                "actual_alpha", "status", "note"]
+        with path.open("a", encoding="utf-8", newline="") as fh:
+            w = csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore")
+            if new:
+                w.writeheader()
+            w.writerow({k: row.get(k) for k in cols})
+
+    def _append_learning_metric(self, row: dict[str, Any]) -> None:
+        assert self.run_dir is not None
+        path = self.run_dir / "learning_metrics.csv"
+        new = not path.exists()
+        cols = ["condition", "seed", "epoch", "stage", "inhibition_gain", "kind",
+                "free_ce", "free_accuracy", "dev_ce", "dev_accuracy",
+                "test_ce", "test_accuracy",
+                "commit_actual_norm", "theta_mean_mV", "theta_std_mV",
+                "it_variance", "it_saturated_fraction", "decoder_mse", "note"]
+        with path.open("a", encoding="utf-8", newline="") as fh:
+            w = csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore")
+            if new:
+                w.writeheader()
+            w.writerow({k: row.get(k) for k in cols})
+
+    def _append_guided_metric(self, row: dict[str, Any]) -> None:
+        """guided 결과는 **별도 파일**에 둔다. 일반화 성능이라고 부르지 않는다."""
+        assert self.run_dir is not None
+        path = self.run_dir / "guided_metrics.csv"
+        new = not path.exists()
+        cols = ["condition", "seed", "epoch", "stage", "inhibition_gain",
+                "guided_ce", "guided_accuracy", "teacher_gate_fraction", "note"]
+        with path.open("a", encoding="utf-8", newline="") as fh:
+            w = csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore")
+            if new:
+                w.writeheader()
+            w.writerow({k: row.get(k) for k in cols})
+
+    def _readout_drift(self, net: Any, probe_free: dict[str, Any] | None = None
+                       ) -> dict[str, Any]:
+        """배율이 바뀌면 특징 분포가 변한다. **자동 재보정으로 숨기지 않고** 잰다."""
+        require_torch()
+        info: dict[str, Any] = {"note_ko": (
+            "준비된 읽기 장치는 낮은 억제에서 적합했다. 배율이 바뀌면 rate_scale "
+            "포화·범위 이탈과 D_l 복원 오차가 커질 수 있다. 여기서는 기록만 하고 "
+            "자동으로 다시 맞추지 않는다. 읽기 장치 재적합은 별도 실험이다.")}
+        if probe_free is None:
+            return info
+        acts = probe_free.get("activities") or {}
+        per_area = {}
+        for area, v in acts.items():
+            spec = net.activity.specs.get(area)
+            per_area[area] = {
+                "rate_scale_hz_fitted": None if spec is None else spec.rate_scale_hz,
+                "mean_activity": float(v.mean()),
+                "variance_between_samples": float(v.var(dim=1, unbiased=False).mean())
+                if v.shape[1] > 1 else 0.0,
+                "saturated_fraction": float((v >= 1.0).to(net.dtype).mean()),
+                "zero_fraction": float((v <= 0.0).to(net.dtype).mean()),
+            }
+        info["by_area"] = per_area
+        # D_l 복원 오차 (준비 시점 대비 지금)
+        dec_err = {}
+        for upper, dec in net.decoders.items():
+            lower = dec.lower
+            if upper in acts and lower in acts:
+                pred = dec.forward(acts[upper])
+                dec_err[upper] = {
+                    "lower": lower,
+                    "reconstruction_mse": float(((pred - acts[lower]) ** 2).mean()),
+                }
+        info["local_decoder_error"] = dec_err
+        if "h_IT" in probe_free and probe_free["h_IT"] is not None:
+            h = probe_free["h_IT"]
+            info["it_variance_between_samples"] = (
+                float(h.var(dim=1, unbiased=False).mean()) if h.shape[1] > 1 else 0.0)
+            info["it_saturated_fraction"] = float((h >= 1.0).to(net.dtype).mean())
+        return info
+
+    def run_inhibition_train(self, *, condition: str | None = None,
+                             schedule: InhibitionSchedule | None = None,
+                             max_samples: int = 0,
+                             reuse_preparation: Path | None = None,
+                             shared_snapshot: Path | None = None,
+                             stop_after_batches: int = 0,
+                             tag: str = "inhibition_train") -> dict[str, Any]:
+        """작업 B — 약한 억제에서 준비한 뒤 점진 복원하며 학습한다 (명세 6절).
+
+        순서는 명세 6절 그대로다.
+
+        1. 동일 시드로 모델을 만들고 배율을 ``start`` 로 둔다.
+        2. **학습 없는 전달 점검**. start 에서 IT 가 침묵하거나 표본을 구별하지
+           못하면 ``INSUFFICIENT_SIGNAL`` 과 진단을 저장하고 중단한다.
+        3. train 자유 단계 특징으로 준비(rate_scale / C / D_img / D_l / 프로토타입).
+        4. 준비 산출물 + 초기 theta 를 **공통 시작 스냅샷**으로 저장하고 고정한다.
+        5. warmup 에서도 교정·임계값 학습을 켠다. ramp 에서 배율을 복원하고
+           hold 에서 최종 배율을 유지한다.
+        6~7. episode 마다 같은 배율로 자유/유도/사후 단계를 돌리고 기존 L5/L6/L1
+           구조와 부호 규약을 유지한다.
+        8. 에폭마다 교사 없는 dev 평가를 하고 그 때의 배율을 함께 기록한다.
+        9. 최종 시험은 배율 ``end`` 에서 ``predict`` 로 조건·시드당 한 번.
+        """
+        require_torch()
+        cond = str(condition or self.cfg["inhibition"]["condition"])
+        allowed = INHIBITION_CONDITIONS + INHIBITION_OPTIONAL_CONDITIONS
+        if cond not in allowed:
+            raise ValueError(f"억제 조건은 {list(allowed)} 중 하나다: {cond!r}")
+        base_sched = schedule or InhibitionSchedule.from_config(self.cfg)
+        sched = self._inhibition_schedule_for(cond, base_sched)
+        zero_teacher = cond.endswith("zero_teacher")
+        seed = int(self.cfg["seed"])
+
+        if self.run_dir is None:
+            self.setup(tag)
+        else:
+            ensure_writable_dir(self.run_dir)
+            write_json(self.run_dir / "resolved_config.json", self.cfg)
+        model = self.build()
+        self.build_data()
+        self.fit_normalization()
+        rec = self.recorder
+        assert rec is not None and self.policy is not None and self.run_dir is not None
+
+        # --- 1. 배율을 start 로 -----------------------------------------
+        model.set_inhibition_gain(sched.alpha_at(0),
+                                  reason=f"{cond}: schedule epoch 0")
+        model.reset_dynamics()
+        net = self.build_network(self.cfg["threshold_learning"]["condition"])
+        net.force_zero_teacher = bool(zero_teacher)
+        rec.manifest["inhibition"] = {
+            "task": "inhibition-train", "condition": cond,
+            "schedule": sched.to_dict(), "base_schedule": base_sched.to_dict(),
+            "zero_teacher": zero_teacher,
+            "gate": model.inhibition.to_dict(),
+            "gain_at_start": model.inhibition_gain,
+            "eval_gain_planned": float(sched.end),
+        }
+        rec.manifest["assumptions"] = assumptions_rows()
+        rec.manifest["implementation_status"] = implementation_status_rows()
+        rec.manifest["code_hashes"] = {
+            "modified": source_hash(),
+            "base_file": {"name": BASE_SOURCE_NAME,
+                          "version": BASE_SOURCE_VERSION,
+                          "sha256": BASE_SOURCE_SHA256},
+        }
+        bundle = self._inhibition_bundle()
+        criteria = dict(self.cfg["inhibition"]["criteria"])
+
+        # --- 2. 학습 없는 전달 점검 --------------------------------------
+        rec.log(f"[{cond}] 배율 {model.inhibition_gain} 에서 학습 없는 전달 점검")
+        probe0 = inhibition_probe(model, bundle["stimuli"], self.n_steps,
+                                  rng_key=("measurement", 0))
+        verdict0 = judge_inhibition_probe(probe0, criteria)
+        self._write_layer_metrics(probe0, condition=cond, seed=seed, epoch=-1,
+                                  stage="pre_train_check")
+        model.reset_dynamics()
+        write_json(self.run_dir / "inhibition_pre_check.json",
+                   {"inhibition_gain": model.inhibition_gain,
+                    "verdict": verdict0, "probe": probe0,
+                    "diagnostic_bundle": bundle["manifest"]})
+        if not verdict0["overall_usable_for_training"]:
+            result = {
+                "task": "inhibition-train", "condition": cond, "seed": seed,
+                "status": STATUS_INSUFFICIENT_SIGNAL,
+                "stopped_at": "pre_training_transmission_check",
+                "inhibition_gain": model.inhibition_gain,
+                "schedule": sched.to_dict(),
+                "pre_check": verdict0,
+                "diagnosis": {
+                    "transmits": verdict0["transmits"],
+                    "it_distinguishable": verdict0["it_distinguishable"],
+                    "blank_response_ok": verdict0["blank_response_ok"],
+                    "saturation_ok": verdict0["saturation_ok"],
+                    "first_failed_stage": verdict0["first_failed_stage"],
+                },
+                "reason_ko": ("start 배율에서 IT 가 침묵하거나 표본별 활동을 구별하지 "
+                              "못해 준비를 시작하지 않았다."),
+                "not_run_ko": ("임의 분류 정확도를 만들어내지 않는다. 학습 루프를 "
+                               "돌지 않았으므로 dev/test 점수와 학습 곡선이 없다."),
+            }
+            write_json(self.run_dir / "train.json", result)
+            self._append_schedule_row({
+                "condition": cond, "seed": seed, "epoch": -1, "stage": "pre_check",
+                "planned_alpha": sched.alpha_at(0),
+                "actual_alpha": model.inhibition_gain,
+                "status": STATUS_INSUFFICIENT_SIGNAL,
+                "note": "start 배율에서 전달 점검 실패"})
+            rec.manifest["experiment_status"] = STATUS_INSUFFICIENT_SIGNAL
+            rec.close(STATUS_INSUFFICIENT_SIGNAL, result["reason_ko"])
+            return result
+
+        # --- 3~4. 준비 + 공통 시작 스냅샷 --------------------------------
+        prep_source = reuse_preparation or shared_snapshot
+        prep = self.prepare_readouts(reuse=prep_source)
+        if prep.get("status") == STATUS_INSUFFICIENT_SIGNAL:
+            result = {
+                "task": "inhibition-train", "condition": cond, "seed": seed,
+                "status": STATUS_INSUFFICIENT_SIGNAL,
+                "stopped_at": "readout_preparation",
+                "inhibition_gain": model.inhibition_gain,
+                "schedule": sched.to_dict(), "preparation": prep,
+                "pre_check": verdict0,
+                "diagnosis": self._signal_diagnosis(prep),
+                "reason_ko": "준비 단계에서 쓸 수 있는 IT 특징을 만들지 못했다.",
+                "not_run_ko": "임의 분류 정확도를 만들어내지 않는다.",
+            }
+            write_json(self.run_dir / "train.json", result)
+            rec.manifest["experiment_status"] = STATUS_INSUFFICIENT_SIGNAL
+            rec.close(STATUS_INSUFFICIENT_SIGNAL, result["reason_ko"])
+            return result
+        snapshot_path = self.run_dir / "checkpoints" / "preparation_state.json"
+        prep_sig_start = self.calibration.signatures()
+        theta_at_snapshot = model.neurons.theta_base.clone()
+        write_json(self.run_dir / "common_start_snapshot.json", {
+            "preparation_file": "checkpoints/preparation_state.json",
+            "preparation_signatures": prep_sig_start,
+            "theta_base_hash": tensor_hash(theta_at_snapshot),
+            "theta0_mV": float(self.cfg["threshold_learning"]["theta0_mV"]),
+            "prepared_at_inhibition_gain": model.inhibition_gain,
+            "wiring_hashes": dict(model.fixed_hashes),
+            "config_sha256": config_hash(self.cfg),
+            "reused_from": (str(prep_source) if prep_source else None),
+            "note_ko": ("모든 조건이 이 스냅샷에서 출발한다. 이후 준비 산출물은 "
+                        "고정이며 임계값 학습 동안 분류기나 D_l 을 다시 학습하지 "
+                        "않는다."),
+        })
+
+        trainer = ThresholdLearningTrainer(
+            self.cfg, net, self.seeds,
+            mode=self.cfg["threshold_learning"]["condition"])
+        rec.manifest["trainer"] = trainer.describe()
+        rec.manifest["experiment_status"] = "running"
+        rec.manifest["common_start_snapshot"] = {
+            "path": str(snapshot_path), "signatures": prep_sig_start}
+
+        bs = int(self.cfg["training"]["batch_size"])
+        train = list(self.splits["train"])
+        if max_samples > 0:
+            train = train[:max_samples]
+        n_batches = max(1, math.ceil(len(train) / bs))
+        n_epochs = sched.total_epochs
+        self.policy.allocate(max(1, n_batches * max(1, n_epochs)))
+        rec.manifest["recording_budget"] = self.policy.to_dict()
+
+        history: list[dict[str, Any]] = []
+        dev_history: list[dict[str, Any]] = []
+        drift_history: list[dict[str, Any]] = []
+        status, reason = "completed", ""
+        forward_calls_sensory = 0
+        t0 = time.time()
+        try:
+            for epoch in range(n_epochs):
+                stage = sched.stage_at(epoch)
+                planned = sched.alpha_at(epoch)
+                # ---- 배율 변경은 **epoch 경계에서만** ----------------
+                model.set_inhibition_gain(
+                    planned, reason=f"{cond}: epoch {epoch} ({stage})")
+                model.reset_dynamics()
+                actual = model.inhibition_gain
+                self._append_schedule_row({
+                    "condition": cond, "seed": seed, "epoch": epoch,
+                    "stage": stage, "planned_alpha": planned,
+                    "actual_alpha": actual, "status": "running",
+                    "note": "epoch 경계에서만 배율을 바꾼다"})
+                order = self.seeds.numpy("split", 1 + epoch).permutation(len(train))
+                for bi in range(n_batches):
+                    sel = order[bi * bs:(bi + 1) * bs]
+                    if sel.size == 0:
+                        continue
+                    batch = [train[int(i)] for i in sel]
+                    images, labels = self._batch_tensor(batch)
+                    sample_id = epoch * 100_000 + bi * bs
+                    self._touch_split("train", len(batch), "inhibition_episode")
+                    tgt, tgt_info = self._teacher_targets(batch, bi)
+                    x, _ = model.encode_batch(images)
+                    gain_before = model.inhibition_gain
+                    phase_hook, finish_record = self._threshold_record_hooks(
+                        rec, sample_id=sample_id, episode_id=epoch,
+                        base_id=batch[0].base_id)
+                    ep = net.correction_episode(
+                        x, labels, sample_id=sample_id, teacher_targets=tgt,
+                        drive_key=("input_noise", epoch * 10_000 + bi),
+                        train=True, collect_rounds=True, phase_hook=phase_hook)
+                    event_counts = finish_record()
+                    forward_calls_sensory += 2 + int(net.K)
+                    trainer.forward_calls += 2 + int(net.K)
+                    trainer.iteration += 1
+                    if ep.get("status") != "completed":
+                        raise EngineDivergence(
+                            f"correction episode 가 완료되지 않았다: "
+                            f"{ep.get('status')} ({ep.get('reason')})")
+                    if abs(model.inhibition_gain - gain_before) > 0:
+                        raise RuntimeError(
+                            "한 episode 안에서 억제 배율이 바뀌었다. 자유/유도/사후 "
+                            "단계의 배율은 같아야 한다.")
+                    commit = ep["commit"]
+                    row = {
+                        "condition": cond, "seed": seed, "epoch": epoch,
+                        "stage": stage, "batch_index": bi, "sample_id": sample_id,
+                        "inhibition_gain": actual, "n_in_batch": len(batch),
+                        "zero_teacher": zero_teacher,
+                        "commit_called": bool(commit.get("applied")),
+                        "updated": (bool(commit.get("applied"))
+                                    and int(commit.get("n_neurons_changed") or 0) > 0),
+                        "teacher_gate_fraction": ep["teacher_gate_fraction"],
+                        "free_before_accuracy": ep["free_before"]["accuracy"],
+                        "free_before_ce": ep["free_before"]["cross_entropy"],
+                        "guided_accuracy": ep["guided_inference"]["accuracy"],
+                        "guided_ce": ep["guided_inference"]["cross_entropy"],
+                        "post_update_free_accuracy":
+                            ep["post_update_free"]["accuracy"],
+                        "post_update_free_ce":
+                            ep["post_update_free"]["cross_entropy"],
+                        "theta_fast_final_norm": ep["theta_fast_final_norm"],
+                        "commit_actual_norm": commit.get("actual_norm"),
+                        "commit_n_changed": commit.get("n_neurons_changed"),
+                        "target_policy": tgt_info,
+                        "event_counts": event_counts,
+                    }
+                    history.append(row)
+                    rec.metric(kind="inhibition_episode", **row)
+                    rec.write_rounds(sample_id, epoch, ep["rounds"])
+                    self._append_guided_metric({
+                        "condition": cond, "seed": seed, "epoch": epoch,
+                        "stage": stage, "inhibition_gain": actual,
+                        "guided_ce": row["guided_ce"],
+                        "guided_accuracy": row["guided_accuracy"],
+                        "teacher_gate_fraction": row["teacher_gate_fraction"],
+                        "note": ("교사가 있는 상태의 값이다. 일반화 성능이 아니다.")})
+                    meta, tensors = self._inhibition_checkpoint(
+                        trainer, cond=cond, sched=sched, epoch=epoch,
+                        next_batch_index=bi + 1, order=order,
+                        snapshot_sig=prep_sig_start)
+                    self.checkpoints.save(f"e{epoch:03d}_b{bi:05d}", meta=meta,
+                                          tensors=tensors)
+                    if stop_after_batches and len(history) >= stop_after_batches:
+                        raise KeyboardInterrupt(
+                            f"stop_after_batches={stop_after_batches} 로 중단했다")
+
+                # ---- 8. 에폭마다 교사 없는 dev 평가 (배율을 함께 기록) ----
+                model.reset_dynamics()
+                dev = self.evaluate_free("dev", note=f"epoch {epoch} alpha={actual}")
+                dev["inhibition_gain"] = actual
+                dev["epoch"] = epoch
+                dev["stage"] = stage
+                dev_history.append(dev)
+                free_probe = self._free_features_for_drift(net, train[:bs])
+                drift = self._readout_drift(net, free_probe)
+                drift["epoch"] = epoch
+                drift["inhibition_gain"] = actual
+                drift_history.append(drift)
+                self._append_learning_metric({
+                    "condition": cond, "seed": seed, "epoch": epoch,
+                    "stage": stage, "inhibition_gain": actual, "kind": "dev",
+                    "dev_ce": dev.get("cross_entropy"),
+                    "dev_accuracy": dev.get("accuracy"),
+                    "free_ce": float(np.mean([h["free_before_ce"] for h in history
+                                              if h["epoch"] == epoch]))
+                    if any(h["epoch"] == epoch for h in history) else None,
+                    "commit_actual_norm": float(np.mean(
+                        [h["commit_actual_norm"] or 0.0 for h in history
+                         if h["epoch"] == epoch]))
+                    if any(h["epoch"] == epoch for h in history) else None,
+                    "theta_mean_mV": float(model.neurons.theta_base.mean()),
+                    "theta_std_mV": float(model.neurons.theta_base.std(unbiased=False)),
+                    "it_variance": drift.get("it_variance_between_samples"),
+                    "it_saturated_fraction": drift.get("it_saturated_fraction"),
+                    "decoder_mse": (float(np.mean(
+                        [v["reconstruction_mse"]
+                         for v in (drift.get("local_decoder_error") or {}).values()]))
+                        if drift.get("local_decoder_error") else None),
+                    "note": ("dev 는 교사 없는 평가다. 다른 배율의 dev 점수를 같은 "
+                             "조건의 향상이라고 단순 비교하지 않는다.")})
+                self._append_schedule_row({
+                    "condition": cond, "seed": seed, "epoch": epoch,
+                    "stage": stage, "planned_alpha": planned,
+                    "actual_alpha": actual, "status": "completed",
+                    "note": f"dev CE={dev.get('cross_entropy')}"})
+                rec.log(f"[{cond}] epoch {epoch} ({stage}) alpha={actual:.4f} "
+                        f"dev CE={dev.get('cross_entropy')} "
+                        f"acc={dev.get('accuracy')}")
+        except KeyboardInterrupt:
+            status, reason = "interrupted", "사용자가 중단했다 (Ctrl+C)"
+            rec.error(reason)
+        except EngineDivergence as exc:
+            status, reason = "failed", str(exc)
+            rec.error("수치 발산으로 중단", exc,
+                      last_checkpoint=str(self.checkpoints.latest()))
+        except RecordingBudgetExceeded as exc:
+            status, reason = "interrupted", str(exc)
+            rec.error("기록 예산 초과로 안전하게 중단", exc,
+                      last_checkpoint=str(self.checkpoints.latest()))
+
+        # --- 9. 최종 시험: 배율 end 에서 조건·시드당 한 번 ----------------
+        eval_gain = self.cfg["inhibition"].get("eval_gain")
+        eval_gain = float(sched.end if eval_gain is None else eval_gain)
+        eval_overridden = self.cfg["inhibition"].get("eval_gain") is not None
+        test = {"status": STATUS_NOT_RUN,
+                "reason": "학습이 정상 종료되지 않아 test 를 평가하지 않았다."}
+        if status == "completed":
+            model.set_inhibition_gain(eval_gain, reason="final test at end gain")
+            model.reset_dynamics()
+            test = self.evaluate_free("test", note=f"최종 1회 (alpha={eval_gain})")
+            test["inhibition_gain"] = eval_gain
+            test["eval_gain_overridden_by_user"] = eval_overridden
+            self._append_learning_metric({
+                "condition": cond, "seed": seed, "epoch": n_epochs - 1,
+                "stage": "final_test", "inhibition_gain": eval_gain, "kind": "test",
+                "test_ce": test.get("cross_entropy"),
+                "test_accuracy": test.get("accuracy"),
+                "theta_mean_mV": float(model.neurons.theta_base.mean()),
+                "note": ("최종 시험은 end 배율에서 조건·시드당 한 번이다. "
+                         "교사 유도 출력이나 theta_fast 가 남은 상태를 쓰지 않는다.")})
+
+        prep_sig_end = self.calibration.signatures()
+        result = {
+            "task": "inhibition-train", "condition": cond, "seed": seed,
+            "status": status, "reason": reason,
+            "zero_teacher": zero_teacher,
+            "schedule": sched.to_dict(),
+            "schedule_table": sched.table(),
+            "pre_check": verdict0,
+            "preparation": prep,
+            "prepared_at_inhibition_gain": float(sched.alpha_at(0)),
+            "common_start_snapshot": {
+                "path": str(snapshot_path), "signatures": prep_sig_start},
+            "preparation_signatures_unchanged": bool(prep_sig_start == prep_sig_end),
+            "history": history, "dev_history": dev_history,
+            "readout_drift": drift_history,
+            "test": test,
+            "final_eval_gain": eval_gain,
+            "final_eval_gain_overridden_by_user": eval_overridden,
+            "theta_change": trainer.theta_change(),
+            "fixed_parameters_unchanged": model.verify_fixed_unchanged(),
+            "inhibition_gain_history": model.inhibition.history,
+            "cost": {
+                "wall_seconds": round(time.time() - t0, 2),
+                "sensory_forward_calls": forward_calls_sensory,
+                "preparation_forward_calls": int(
+                    prep.get("n_prep_samples") or 0),
+                "n_episodes": len(history), "n_epochs": n_epochs,
+                "note_ko": "조건 간 계산량 차이를 드러내기 위해 함께 기록한다.",
+            },
+            "test_access": self.test_access,
+            "split_access": self.split_access,
+            "learning_outcome": self._inhibition_outcome(history, dev_history,
+                                                         cond, sched),
+            "note_ko": ("'억제를 줄여 살아났다', '교정이 도움이 됐다', '정상 억제로 "
+                        "복원한 뒤에도 유지됐다' 는 서로 다른 결론이다. 각각 따로 "
+                        "읽어야 한다."),
+        }
+        rec.manifest["experiment_status"] = status
+        rec.manifest["inhibition"]["final_eval_gain"] = eval_gain
+        rec.manifest["test_access"] = self.test_access
+        write_json(self.run_dir / "train.json", result)
+        write_json(self.run_dir / "evaluation_counters.json",
+                   {"test_access": self.test_access,
+                    "split_access": self.split_access,
+                    "final_eval_gain": eval_gain,
+                    "policy_ko": ("최종 시험은 조건·시드당 한 번이다. 낮은 억제로 "
+                                  "평가한 점수와 정상 억제에서 평가한 점수를 섞지 "
+                                  "않는다.")})
+        write_json(self.run_dir / "assumptions.json",
+                   {"assumptions": assumptions_rows(),
+                    "implementation_status": implementation_status_rows()})
+        rec.write_summary_csv([{k: v for k, v in h.items()
+                                if not isinstance(v, (dict, list))}
+                               for h in history])
+        rec.close(status, reason)
+        return result
+
+    def _free_features_for_drift(self, net: Any, stims: Sequence[Stimulus]
+                                 ) -> dict[str, Any] | None:
+        """읽기 장치 표류 측정을 위한 **교사 없는** 자유 단계 특징.
+
+        학습 경로와 독립이며 어떤 파라미터도 바꾸지 않는다.
+        """
+        if not stims:
+            return None
+        assert self.model is not None
+        images, _labels = self._batch_tensor(stims)
+        del _labels                      # 이 경로에 라벨을 넘기지 않는다
+        x, _ = self.model.encode_batch(images)
+        drive = self.model.make_drive(x, net.n_steps,
+                                      rng_key=("measurement", 909_000))
+        out = net.settle_chain(None, None, None,
+                               {"drive_key": ("measurement", 909_000)},
+                               drive, None, net.n_steps)
+        self.model.reset_dynamics()
+        return out
+
+    def _inhibition_checkpoint(self, trainer: Any, *, cond: str,
+                               sched: InhibitionSchedule, epoch: int,
+                               next_batch_index: int, order: np.ndarray,
+                               snapshot_sig: dict[str, str]
+                               ) -> tuple[dict[str, Any], dict[str, np.ndarray]]:
+        """억제 실험 전용 체크포인트. 일반 학습 형식과 **혼동하지 않는다**."""
+        assert self.model is not None and self.recorder is not None
+        model = self.model
+        meta = {
+            "format": "visual_cortex_gpu.inhibition_checkpoint.v1",
+            "run_id": self.run_dir.name,
+            "code_sha256": source_hash().get("sha256", ""),
+            "base_source": {"name": BASE_SOURCE_NAME,
+                            "version": BASE_SOURCE_VERSION,
+                            "sha256": BASE_SOURCE_SHA256},
+            "config_sha256": config_hash(self.cfg),
+            "data_digest": self.data_digest,
+            "experiment": "inhibition-train", "condition": cond,
+            "schedule": sched.to_dict(),
+            "epoch": int(epoch), "next_batch_index": int(next_batch_index),
+            "stage": sched.stage_at(epoch),
+            "planned_alpha": sched.alpha_at(epoch),
+            "current_inhibition_gain": model.inhibition_gain,
+            "force_zero_teacher": bool(getattr(self.network, "force_zero_teacher",
+                                               False)),
+            "global_step": int(self.global_step),
+            "trainer": trainer.state_dict(),
+            "preparation_file": "checkpoints/preparation_state.json",
+            "preparation_signatures": snapshot_sig,
+            "encoder": model.encoder.state_dict(),
+            "rng": self.seeds.state_dict(),
+            "split_ids": {k: [s.stimulus_id for s in v]
+                          for k, v in self.splits.items()},
+            "test_access": self.test_access,
+            "split_access": self.split_access,
+            "committed_rows": self.recorder.committed_rows(),
+            "fixed_hashes": model.fixed_hashes,
+            "theta_base_hash": tensor_hash(model.neurons.theta_base),
+            "eval_gain": self.cfg["inhibition"].get("eval_gain"),
+            "resume_unit": "completed_minibatch",
+            "resume_note_ko": ("재개 단위는 마지막 **완료된 미니배치**다. 중간 배치의 "
+                               "결과를 중복 누적하지 않는다. 일반 학습 체크포인트와 "
+                               "형식이 다르므로 서로 자동 변환하지 않는다."),
+        }
+        tensors: dict[str, np.ndarray] = {
+            "theta_base": model.neurons.theta_base.detach().to("cpu").numpy(),
+            "theta_trainable": model.neurons.theta_trainable.detach()
+            .to("cpu").numpy(),
+            "z": model.gains.z.detach().to("cpu").numpy(),
+            "order": np.asarray(order, dtype=np.int64),
+        }
+        if model.encoder.scale is not None:
+            tensors["norm_scale"] = model.encoder.scale.detach().to("cpu").numpy()
+        return meta, tensors
+
+    @staticmethod
+    def _inhibition_outcome(history: list[dict[str, Any]],
+                            dev: list[dict[str, Any]], condition: str,
+                            sched: InhibitionSchedule) -> dict[str, Any]:
+        """세 가지 결론을 **분리해서** 판정한다. 성공을 전제하지 않는다."""
+        if not history:
+            return {"verdict": STATUS_NOT_RUN, "reason": "episode 가 없었다"}
+        by_stage: dict[str, list[dict[str, Any]]] = {}
+        for d in dev:
+            by_stage.setdefault(d.get("stage", "?"), []).append(d)
+
+        def ce_of(rows: list[dict[str, Any]]) -> float | None:
+            vals = [r.get("cross_entropy") for r in rows
+                    if isinstance(r.get("cross_entropy"), (int, float))]
+            return float(np.mean(vals)) if vals else None
+
+        end_rows = [d for d in dev
+                    if abs(float(d.get("inhibition_gain", -1)) - sched.end) < 1e-9]
+        start_rows = [d for d in dev
+                      if abs(float(d.get("inhibition_gain", -1)) - sched.start) < 1e-9]
+        return {
+            "condition": condition,
+            "n_episodes": len(history),
+            "n_commits": sum(1 for h in history if h.get("updated")),
+            "dev_ce_by_stage": {k: ce_of(v) for k, v in by_stage.items()},
+            "dev_ce_at_start_gain": ce_of(start_rows),
+            "dev_ce_at_end_gain": ce_of(end_rows),
+            "dev_ce_first": dev[0].get("cross_entropy") if dev else None,
+            "dev_ce_last": dev[-1].get("cross_entropy") if dev else None,
+            "separate_conclusions_ko": {
+                "transmission_recovered_by_low_inhibition": (
+                    "낮은 배율에서 신호가 IT 까지 도달했는가 — pre_check 와 "
+                    "inhibition_scan 으로 판단한다."),
+                "teacher_correction_helped": (
+                    "교정의 추가 효과 — ramp_local 과 ramp_zero_teacher 의 차이로만 "
+                    "판단한다."),
+                "survived_restoration_to_normal": (
+                    "정상 억제로 복원한 뒤에도 유지됐는가 — end 배율에서의 dev/test "
+                    "로만 판단한다."),
+            },
+            "cross_gain_comparison_warning_ko": (
+                "다른 배율에서 잰 dev 점수를 같은 조건의 향상이라고 단순 비교하지 "
+                "않는다. 배율이 다르면 감각 활동 자체가 다르다."),
+            "note_ko": ("단일 시드 결과를 일반적인 성공으로 결론 내리지 않는다."),
+        }
+
     def run_diagnose(self) -> dict[str, Any]:
         """망막->LGN->V1 전달 진단 (양성 대조 + 무입력 대조)."""
         self.setup("diagnose")
@@ -7770,14 +9762,18 @@ class ExperimentRunner:
             "positive_control": transmission_diagnostic(model, pos, self.n_steps),
             "no_input_control": transmission_diagnostic(model, neg, self.n_steps),
             "w0_calibration": model.build_report.w0_calibration,
+            "passive_compartment_audit": passive_compartment_audit(),
         }
         p, q = result["positive_control"], result["no_input_control"]
         result["verdict"] = {
             "chain_transmits": bool(p["chain_ok"]),
             "silent_areas_with_input": p["silent_chain_areas"],
-            "no_input_is_quiet": bool(q["by_area"].get("V1", {}).get("total_spikes", 0) == 0),
-            "note_ko": ("작은 회로 통과를 전체 계층 통과로 대신하지 않는다. 여기 결과는 "
-                        "이 preset 의 실제 전체 배선에서 측정한 것이다."),
+            "no_input_is_quiet": all(v["total_spikes"] == 0 for v in q["by_area"].values()),
+            "chain_areas": p["chain_areas"],
+            "failed_stages": p["failed_stages"],
+            "first_failed_stage": p["first_failed_stage"],
+            "note_ko": ("설정된 모든 영역의 L4 흥분성 입력과 L2/L3 흥분성 출력을 각각 검사한다. "
+                        "전달 실패는 학습 규칙의 실패 판정이 아니다."),
         }
         rec.metric(kind="diagnose", **{k: v for k, v in result["verdict"].items()})
         write_json(self.run_dir / "diagnose.json", result)
@@ -7827,6 +9823,9 @@ class ExperimentRunner:
                 "mean_rate_hz": float(spikes.to(self.dtype).mean() / duration_s),
                 "silent_fraction": float((spikes == 0).to(self.dtype).mean())}
         res = {"stimulus_id": stim.stimulus_id, "label": stim.label,
+               "input_source": (str(image_path) if image_path is not None else "builtin"),
+               "processed_image_shape": list(stim.frames[0].shape),
+               "image_max_side_px": int(self.cfg["image"]["max_side_px"]),
                "n_steps": self.n_steps, "by_area": by_area,
                "engine_counters": out["engine_counters"],
                "event_counts": out.get("event_counts", {}),
@@ -7849,7 +9848,12 @@ class ExperimentRunner:
         assert self.model is not None
         # ``checkpoint`` 는 체크포인트 json 파일이거나 학습 실행 폴더다.
         if checkpoint.is_dir():
-            source_run = checkpoint
+            source_run = checkpoint.parent if checkpoint.name == "checkpoints" else checkpoint
+            if not (source_run / "checkpoints").is_dir():
+                return {"status": STATUS_SKIPPED,
+                        "reason_ko": (f"학습 체크포인트 폴더가 없다: {checkpoint}. "
+                                      "영상 파일/도형 폴더와 학습 실행 폴더는 별도다. "
+                                      "완료된 train_... 폴더를 지정하라.")}
             manager = CheckpointManager(source_run)
             path = manager.latest()
             if path is None:
@@ -7878,12 +9882,35 @@ class ExperimentRunner:
         if not prep_file.is_file():
             return {"status": STATUS_SKIPPED,
                     "reason_ko": f"준비 산출물 파일이 없다: {prep_file}"}
+        if meta.get("fixed_hashes") != self.model._compute_fixed_hashes():
+            raise RuntimeError("체크포인트와 현재 감각 모델의 고정 텐서가 다르다. "
+                               "학습에 쓴 설정/시드로 실행하라.")
+        if "encoder" not in meta:
+            raise RuntimeError("학습 당시의 정규화 정보가 없는 체크포인트다.")
+        source_cfg_file = source_run / "resolved_config.json"
+        if not source_cfg_file.is_file():
+            raise FileNotFoundError(f"학습 설정 파일이 없다: {source_cfg_file}")
+        source_cfg = read_json(source_cfg_file)
+        prediction_keys = ("engine", "image", "retina", "retinotopy", "decoder")
+        mismatch = [k for k in prediction_keys if source_cfg.get(k) != self.cfg.get(k)]
+        src_att = source_cfg.get("threshold_learning", {}).get("attention")
+        if src_att != self.cfg["threshold_learning"].get("attention"):
+            mismatch.append("threshold_learning.attention")
+        if mismatch:
+            raise RuntimeError(f"학습 당시 추론 설정과 다르다: {mismatch}. "
+                               "해당 실행의 resolved_config.json을 --config로 사용하라.")
         reuse = self.calibration.load_state_dict(read_json(prep_file))
+        saved_signatures = meta.get("preparation_signatures")
+        if not saved_signatures or saved_signatures != self.calibration.signatures():
+            raise RuntimeError("준비 산출물 해시가 체크포인트와 다르다.")
+        self.model.encoder.load_state_dict(meta["encoder"])
+        if tuple(np.asarray(tensors["theta_base"]).shape) != (self.model.neurons.n,):
+            raise RuntimeError("체크포인트 임계값 배열의 크기가 현재 뉴런 수와 다르다.")
         self.model.neurons.theta_base = t.tensor(
             np.asarray(tensors["theta_base"], dtype=np.float64),
             dtype=self.dtype, device=self.device)
-        images, _labels = self._batch_tensor([stim])
-        del _labels                    # predict 경로에 라벨을 넘기지 않는다
+        images, _labels = self._batch_tensor([stim], require_labels=False)
+        del _labels                    # 라벨을 만들지도, predict에 넘기지도 않는다
         out = net.predict(images, {"drive_key": ("input_noise", 777)})
         info: dict[str, Any] = {
             "status": "completed", "checkpoint": str(path),
@@ -8384,7 +10411,7 @@ class ExperimentRunner:
                             epochs: int | None = None, max_samples: int = 0,
                             reuse_preparation: Path | None = None,
                             stop_after_batches: int = 0) -> dict[str, Any]:
-        """이번 기본 학습: 초기 15 에서 ``theta_base`` 를 학습한다.
+        """이번 기본 학습: 초기 THETA0 에서 ``theta_base`` 를 학습한다.
 
         순서는 (1) 모델·데이터·정규화, (2) **준비 단계**(rate_scale/C/D_img/D_l/
         프로토타입), (3) episode 별 correction + commit, (4) dev 평가, (5) 완료 시
@@ -8407,7 +10434,7 @@ class ExperimentRunner:
         net = self.build_network(condition)
         rec.manifest["threshold"] = {
             **self._threshold_manifest(),
-            "note_ko": ("이번 기본은 임계값 고정이 아니라 초기값 15 에서 학습이다. "
+            "note_ko": (f"이번 기본은 임계값 고정이 아니라 초기값 {THETA0} 에서 학습이다. "
                         "frozen_threshold 조건에서는 trainable 이 false 이고 "
                         "theta_base 가 전혀 바뀌지 않는다."),
         }
@@ -8425,27 +10452,12 @@ class ExperimentRunner:
             reuse_preparation = saved_prep
         prep = self.prepare_readouts(reuse=reuse_preparation)
         if prep.get("status") == STATUS_INSUFFICIENT_SIGNAL:
-            result = {
-                "mode": condition, "status": STATUS_INSUFFICIENT_SIGNAL,
-                "stopped_at": "readout_preparation",
-                "preparation": prep,
-                "diagnosis": self._signal_diagnosis(prep),
-                "reason_ko": ("최상위 영역까지 쓸 수 있는 신호가 오지 않아 학습을 "
-                              "시작하지 않았다. 임의 정확도를 출력하지 않는다."),
-                "not_run_ko": ("학습 루프를 돌지 않았으므로 metrics.jsonl, "
-                               "체크포인트, dev/test 평가, 학습 곡선이 없다. "
-                               "없는 것을 0 이나 실패로 채우지 않는다."),
-            }
+            result = {"mode": condition, "status": STATUS_INSUFFICIENT_SIGNAL,
+                      "preparation": prep,
+                      "reason_ko": ("IT 까지 신호가 도착하지 않아 학습을 시작하지 "
+                                    "않는다. 임의 정확도를 출력하지 않는다.")}
             write_json(self.run_dir / "train.json", result)
-            write_json(self.run_dir / "assumptions.json",
-                       {"assumptions": assumptions_rows(),
-                        "implementation_status": implementation_status_rows()})
-            write_json(self.run_dir / "evaluation_counters.json",
-                       {"test_access": self.test_access,
-                        "split_access": self.split_access,
-                        "note_ko": "준비 단계에서 중단해 dev/test 를 평가하지 않았다."})
             rec.manifest["experiment_status"] = STATUS_INSUFFICIENT_SIGNAL
-            rec.manifest["diagnosis"] = result["diagnosis"]
             rec.close(STATUS_INSUFFICIENT_SIGNAL, result["reason_ko"])
             return result
 
@@ -8672,69 +10684,6 @@ class ExperimentRunner:
                                 if not isinstance(v, (dict, list))} for h in history])
         rec.close(status, reason)
         return result
-
-    @staticmethod
-    def _signal_diagnosis(prep: dict[str, Any]) -> dict[str, Any]:
-        """준비 단계가 멈춘 이유를 **수치와 함께** 남긴다 (명세 19절 실패 진단).
-
-        원인을 하나로 단정하지 않는다. 각 후보마다 근거가 된 숫자를 붙이고,
-        확인되지 않은 것은 확인되지 않았다고 적는다.
-        """
-        it = dict(prep.get("it_variability") or {})
-        scales = dict((prep.get("rate_scale") or {}).get("areas") or {})
-        silent = sorted(a for a, v in scales.items()
-                        if int(v.get("n_positive", 0)) == 0)
-        alive = sorted(a for a, v in scales.items()
-                       if int(v.get("n_positive", 0)) > 0)
-        causes: list[dict[str, Any]] = []
-        if silent:
-            causes.append({
-                "cause": "signal_did_not_reach_area",
-                "areas_with_no_positive_firing": silent,
-                "areas_with_firing": alive,
-                "evidence_ko": (f"{silent} 영역에서 양의 발화가 하나도 없다. "
-                                f"정규화로 숨기지 않고 신호 전달 실패로 보고한다."),
-                "what_to_do_ko": ("메뉴 3(전달 진단)으로 어느 단계에서 끊기는지 "
-                                  "먼저 확인하라. 망막→LGN→V1 이 살아 있는데 상위가 "
-                                  "죽어 있으면 영역 간 배선·지연·w0 문제다."),
-            })
-        if it and it.get("n_prep_samples", 0) >= 2 and not silent:
-            causes.append({
-                "cause": "top_area_output_does_not_vary_across_samples",
-                "between_sample_variance": it.get("between_sample_variance"),
-                "max_abs_difference_to_first": it.get("max_abs_difference_to_first"),
-                "active_fraction": it.get("active_fraction"),
-                "evidence_ko": ("최상위 영역이 발화는 하지만 표본마다 같은 값을 "
-                                "낸다. 이 상태에서 분류기를 학습하면 동률 argmax 가 "
-                                "나오므로 시작하지 않았다."),
-                "what_to_do_ko": ("표본 길이(engine.sample_ms)를 늘리거나 입력 "
-                                  "대비를 키워 보라. 포화(active_fraction 이 1 에 "
-                                  "가까움)면 모든 뉴런이 항상 발화하는 것이다."),
-            })
-        if it and int(it.get("n_prep_samples", 0)) < 2:
-            causes.append({
-                "cause": "too_few_preparation_samples",
-                "n_prep_samples": it.get("n_prep_samples"),
-                "evidence_ko": "준비 표본이 2개 미만이라 표본 간 변동을 잴 수 없다.",
-                "what_to_do_ko": "readout_prep.n_preparation_samples 를 늘려라.",
-            })
-        if not causes:
-            causes.append({
-                "cause": "unclassified",
-                "evidence_ko": ("준비 단계가 멈췄지만 위 분류에 들어맞지 않는다. "
-                                "preparation.json 전체를 보라."),
-            })
-        return {
-            "stopped_at": "readout_preparation",
-            "candidate_causes": causes,
-            "rate_scale_by_area": {a: {"rate_scale_hz": v.get("rate_scale_hz"),
-                                       "n_positive": v.get("n_positive"),
-                                       "status": v.get("status")}
-                                   for a, v in scales.items()},
-            "it_variability": it,
-            "single_cause_note_ko": ("원인을 하나로 단정할 때는 그 요소만 바꾼 비교 "
-                                     "근거를 함께 제시해야 한다. 위 목록은 후보다."),
-        }
 
     @staticmethod
     def _threshold_outcome(history: list[dict[str, Any]],
@@ -8989,12 +10938,65 @@ class ExperimentRunner:
         latest = self.checkpoints.latest()
         if latest is None:
             raise RuntimeError(f"체크포인트가 없다: {self.run_dir / 'checkpoints'}")
+        meta = read_json(latest)
+        fmt = str(meta.get("format") or "")
+        if fmt == "visual_cortex_gpu.inhibition_checkpoint.v1":
+            return self.resume_inhibition_train(latest, meta)
         saved = read_json(self.run_dir / "resolved_config.json") \
             if (self.run_dir / "resolved_config.json").is_file() else None
         mode = None
         if isinstance(saved, dict):
             mode = str(saved.get("training", {}).get("mode", "")) or None
         return self.run_train(mode=mode, resume_from=latest)
+
+    def resume_inhibition_train(self, checkpoint: Path,
+                                meta: dict[str, Any]) -> dict[str, Any]:
+        """억제 실험 체크포인트에서 이어 실행한다.
+
+        재개 단위는 **마지막 완료된 미니배치**다. 중간 배치의 결과를 중복
+        누적하지 않는다. 지금 구현은 에폭 단위로만 이어 붙이므로, 남은
+        에폭이 있으면 그 지점부터 다시 실행하고 그 사실을 결과에 남긴다.
+        일반 학습 체크포인트를 억제 실험으로 자동 변환하지 않는다.
+        """
+        if str(meta.get("format")) != "visual_cortex_gpu.inhibition_checkpoint.v1":
+            raise RuntimeError(
+                f"억제 실험 체크포인트가 아니다: {meta.get('format')!r}. "
+                f"형식이 다른 파일을 자동 변환하지 않는다.")
+        base = meta.get("base_source") or {}
+        if base.get("sha256") not in (None, BASE_SOURCE_SHA256):
+            raise RuntimeError(
+                f"체크포인트의 기준 원본 해시가 지금 코드와 다르다: "
+                f"{base.get('sha256')} != {BASE_SOURCE_SHA256}. 새 실행으로 "
+                f"시작하라.")
+        sch = meta.get("schedule") or {}
+        sched = InhibitionSchedule(
+            start=float(sch["start"]), end=float(sch["end"]),
+            warmup_epochs=int(sch["warmup_epochs"]),
+            ramp_epochs=int(sch["ramp_epochs"]),
+            hold_epochs=int(sch["hold_epochs"]), kind=str(sch["kind"]))
+        cond = str(meta.get("condition") or self.cfg["inhibition"]["condition"])
+        done_epoch = int(meta.get("epoch", 0))
+        snapshot = self.run_dir / str(meta.get("preparation_file")
+                                      or "checkpoints/preparation_state.json")
+        if not snapshot.is_file():
+            raise RuntimeError(
+                f"공통 준비 스냅샷이 없다: {snapshot}. 준비를 다시 돌리면 다른 "
+                f"스냅샷이 되므로 같은 실행의 재개라고 하지 않는다.")
+        result = self.run_inhibition_train(
+            condition=cond, schedule=sched, shared_snapshot=snapshot,
+            tag="inhibition_resume")
+        result["resumed"] = {
+            "from_checkpoint": str(checkpoint),
+            "checkpoint_epoch": done_epoch,
+            "checkpoint_next_batch_index": int(meta.get("next_batch_index", 0)),
+            "checkpoint_alpha": meta.get("current_inhibition_gain"),
+            "schedule_matches": sched.to_dict() == sch,
+            "resume_granularity": "epoch",
+            "note_ko": ("이 구현은 마지막 완료 미니배치의 상태를 저장하지만 재개는 "
+                        "에폭 경계에서 다시 시작한다. 중간 배치 재개를 지원한다고 "
+                        "표시하지 않는다."),
+        }
+        return result
 
     # ------------------------------------------------------------------
     def run_benchmark(self) -> dict[str, Any]:
@@ -9072,6 +11074,233 @@ class ExperimentRunner:
                               "여기 숫자는 이 환경·이 preset 의 실측이다.")
         write_json(self.run_dir / "benchmark.json", results)
         return results
+
+
+
+def run_inhibition_compare(cfg: dict[str, Any], output_root: Path,
+                           device_choice: str, *,
+                           conditions: Sequence[str] | None = None,
+                           seeds: Sequence[int] | None = None,
+                           max_samples: int = 0,
+                           schedule: InhibitionSchedule | None = None,
+                           progress: Callable[[str], None] | None = None
+                           ) -> dict[str, Any]:
+    """작업 C — 원인을 구분하는 대조 실험 (명세 7절).
+
+    모든 조건은 **같은 낮은 억제에서 준비한 공통 스냅샷**에서 출발한다. 이 비교는
+    "공통 약억제 준비 이후, 점진 복원과 즉시 복원 및 교사 교정의 효과" 를 보는
+    실험이다. 처음부터 정상 억제로 독립 준비한 모델과의 비교가 **아니다**.
+
+    주 비교
+    -------
+    * ``ramp_local - ramp_zero_teacher``   : 교정의 추가 효과
+    * ``ramp_local - immediate_local``     : 복원 속도의 영향
+    * 두 차이의 차이(상호작용)도 시드별로 보고한다.
+
+    실패한 조건을 표에서 빼지 않는다. 수행 불가능한 점수는 ``null`` 과 이유로
+    남기고 0% 정확도로 대체하지 않는다.
+    """
+    say = progress or (lambda _m: None)
+    conds = list(conditions or INHIBITION_CONDITIONS)
+    allowed = INHIBITION_CONDITIONS + INHIBITION_OPTIONAL_CONDITIONS
+    unknown = [c for c in conds if c not in allowed]
+    if unknown:
+        raise ValueError(f"알 수 없는 조건: {unknown} (가능: {list(allowed)})")
+    missing_required = [c for c in INHIBITION_CONDITIONS if c not in conds]
+    optional_used = [c for c in conds if c in INHIBITION_OPTIONAL_CONDITIONS]
+    if optional_used and missing_required:
+        raise ValueError(
+            f"필수 네 조건을 완성하기 전에 선택 조건을 쓸 수 없다. "
+            f"빠진 필수 조건: {missing_required}, 요청한 선택 조건: {optional_used}")
+    seed_list = [int(s) for s in (seeds or [int(cfg["seed"])])]
+    base_sched = schedule or InhibitionSchedule.from_config(cfg)
+
+    root = new_run_dir(Path(output_root), "inhibition_compare")
+    write_json(root / "resolved_config.json", cfg)
+    summary: dict[str, Any] = {
+        "task": "inhibition-compare",
+        "root": str(root), "conditions": conds, "seeds": seed_list,
+        "schedule": base_sched.to_dict(),
+        "config_sha256": config_hash(cfg),
+        "base_source": {"name": BASE_SOURCE_NAME, "version": BASE_SOURCE_VERSION,
+                        "sha256": BASE_SOURCE_SHA256,
+                        "verified": BASE_SOURCE_VERIFIED},
+        "code": source_hash(),
+        "exploratory_single_seed": len(seed_list) < 2,
+        "design_note_ko": (
+            "모든 조건이 **같은 낮은 억제에서 준비한 공통 스냅샷**에서 출발한다. "
+            "처음부터 정상 억제로 독립 준비한 모델과의 비교가 아니다."),
+        "matched_across_conditions_ko": (
+            "총 에폭 수, 자료 순서, 배선, w0, P, 준비된 읽기 장치, 초기 임계값, "
+            "외생 난수 스트림을 조건 간 같게 둔다."),
+        "results": {}, "failures": [],
+    }
+    if len(seed_list) < 2:
+        summary["exploratory_note_ko"] = (
+            "단일 시드 실행이다. 빠른 확인용이며 단일 시드 개선을 일반적인 성공으로 "
+            "결론 내리지 않는다. 여러 시드는 --seeds 로 지정한다.")
+
+    for seed in seed_list:
+        say(f"시드 {seed}: 공통 준비 스냅샷 생성")
+        seed_cfg = json.loads(json.dumps(cfg))
+        seed_cfg["seed"] = int(seed)
+        shared_snapshot: Path | None = None
+        snapshot_owner: str | None = None
+        for cond in conds:
+            say(f"시드 {seed} / 조건 {cond} 실행")
+            run_dir = root / safe_name(f"seed{seed}_cond_{cond}")
+            runner = ExperimentRunner(seed_cfg, run_dir=run_dir,
+                                      device_choice=device_choice)
+            runner.setup(f"seed{seed}_{cond}")
+            try:
+                res = runner.run_inhibition_train(
+                    condition=cond, schedule=base_sched,
+                    max_samples=max_samples,
+                    shared_snapshot=shared_snapshot,
+                    tag=f"seed{seed}_{cond}")
+                # 준비는 **시드당 한 번**만 하고 같은 산출물을 공유한다.
+                if shared_snapshot is None and res.get("status") != \
+                        STATUS_INSUFFICIENT_SIGNAL:
+                    cand = runner.run_dir / "checkpoints" / "preparation_state.json"
+                    if cand.is_file():
+                        shared_snapshot = cand
+                        snapshot_owner = cond
+            except Exception as exc:                       # noqa: BLE001
+                res = {"task": "inhibition-train", "condition": cond, "seed": seed,
+                       "status": "failed",
+                       "error": f"{type(exc).__name__}: {exc}",
+                       "traceback": traceback.format_exc(),
+                       "test": {"status": STATUS_NOT_RUN,
+                                "reason": "조건이 예외로 중단됐다"},
+                       "reason_ko": ("이 조건은 오류로 중단됐다. 결과 표에서 빼지 "
+                                     "않고 null 과 이유로 남긴다.")}
+                summary["failures"].append(
+                    {"seed": seed, "condition": cond, "error": res["error"]})
+            summary["results"].setdefault(str(seed), {})[cond] = {
+                k: v for k, v in res.items()
+                if k not in ("history", "dev_history", "readout_drift",
+                             "schedule_table", "pre_check", "preparation")}
+            summary["results"][str(seed)][cond]["run_dir"] = str(runner.run_dir)
+            summary["results"][str(seed)][cond]["n_episodes"] = len(
+                res.get("history", []))
+        summary.setdefault("shared_snapshot_by_seed", {})[str(seed)] = {
+            "path": str(shared_snapshot) if shared_snapshot else None,
+            "created_by_condition": snapshot_owner,
+            "note_ko": ("준비는 시드당 한 번 수행하고 나머지 조건은 같은 산출물을 "
+                        "재사용한다."),
+        }
+
+    summary["paired_differences"] = _inhibition_paired_differences(
+        summary["results"])
+    summary["cost"] = {
+        str(seed): {cond: (summary["results"][str(seed)][cond].get("cost") or {})
+                    for cond in summary["results"][str(seed)]}
+        for seed in seed_list}
+    summary["reporting_rules_ko"] = [
+        "수치 오류로 중단한 조건, 준비 실패 조건, 마지막에 침묵한 조건을 표에서 빼지 않는다.",
+        "수행 불가능한 점수는 null 과 이유로 남기고 0% 정확도로 대체하지 않는다.",
+        "주 비교의 최종 시험은 모두 같은 end 배율이다.",
+        "낮은 억제로 평가한 점수와 정상 억제에서 평가한 점수를 섞지 않는다.",
+    ]
+    write_json(root / "comparison_summary.json", summary)
+    return summary
+
+
+def _inhibition_paired_differences(results: dict[str, Any]) -> dict[str, Any]:
+    """시드별 짝지은 차이와 평균·표준편차. 실패는 ``null`` 로 남긴다."""
+    def score(row: dict[str, Any], key: str) -> float | None:
+        test = row.get("test") or {}
+        if test.get("status") != "completed":
+            return None
+        v = test.get(key)
+        return float(v) if isinstance(v, (int, float)) else None
+
+    pairs = [
+        ("teacher_correction_effect", "ramp_local", "ramp_zero_teacher",
+         "교정의 추가 효과 (같은 점진 복원 일정에서 교사만 다르다)"),
+        ("restoration_speed_effect", "ramp_local", "immediate_local",
+         "복원 속도의 영향 (같은 교사 설정에서 일정만 다르다)"),
+        ("zero_teacher_restoration_speed", "ramp_zero_teacher",
+         "immediate_zero_teacher", "교사 없이 본 복원 속도의 영향"),
+    ]
+    out: dict[str, Any] = {"per_pair": {}, "interaction": {}}
+    for name, a, b, desc in pairs:
+        per_seed: dict[str, Any] = {}
+        for seed, rows in results.items():
+            ra, rb = rows.get(a), rows.get(b)
+            if ra is None or rb is None:
+                per_seed[seed] = {"available": False,
+                                  "reason": f"{a} 또는 {b} 조건이 실행되지 않았다"}
+                continue
+            d_acc = None
+            d_ce = None
+            aa, ba = score(ra, "accuracy"), score(rb, "accuracy")
+            ac, bc = score(ra, "cross_entropy"), score(rb, "cross_entropy")
+            if aa is not None and ba is not None:
+                d_acc = aa - ba
+            if ac is not None and bc is not None:
+                d_ce = ac - bc
+            per_seed[seed] = {
+                "available": d_acc is not None or d_ce is not None,
+                f"{a}_accuracy": aa, f"{b}_accuracy": ba,
+                f"{a}_cross_entropy": ac, f"{b}_cross_entropy": bc,
+                "delta_accuracy": d_acc, "delta_cross_entropy": d_ce,
+                "reason": (None if (d_acc is not None or d_ce is not None)
+                           else "한쪽 이상이 시험 점수를 내지 못했다 (null 로 남긴다)"),
+            }
+        accs = [v["delta_accuracy"] for v in per_seed.values()
+                if isinstance(v.get("delta_accuracy"), float)]
+        ces = [v["delta_cross_entropy"] for v in per_seed.values()
+               if isinstance(v.get("delta_cross_entropy"), float)]
+        out["per_pair"][name] = {
+            "description_ko": desc, "minuend": a, "subtrahend": b,
+            "per_seed": per_seed,
+            "n_usable_seeds": len(accs),
+            "mean_delta_accuracy": float(np.mean(accs)) if accs else None,
+            "std_delta_accuracy": (float(np.std(accs, ddof=1))
+                                   if len(accs) >= 2 else None),
+            "mean_delta_cross_entropy": float(np.mean(ces)) if ces else None,
+            "std_delta_cross_entropy": (float(np.std(ces, ddof=1))
+                                        if len(ces) >= 2 else None),
+            "note_ko": ("시드 수가 적으면 표준편차를 신뢰하지 마라. 시드 5개로 "
+                        "동등성이나 효과 부재를 증명했다고 쓰지 않는다."),
+        }
+    # 두 차이의 차이 (상호작용): (ramp_local - ramp_zero) - (imm_local - imm_zero)
+    inter: dict[str, Any] = {}
+    for seed, rows in results.items():
+        need = ("ramp_local", "ramp_zero_teacher", "immediate_local",
+                "immediate_zero_teacher")
+        if any(rows.get(c) is None for c in need):
+            inter[seed] = {"available": False,
+                           "reason": "네 조건이 모두 필요하다"}
+            continue
+        vals = {c: score(rows[c], "accuracy") for c in need}
+        if any(v is None for v in vals.values()):
+            inter[seed] = {"available": False, "accuracy_by_condition": vals,
+                           "reason": "일부 조건이 시험 점수를 내지 못했다"}
+            continue
+        d1 = vals["ramp_local"] - vals["ramp_zero_teacher"]
+        d2 = vals["immediate_local"] - vals["immediate_zero_teacher"]
+        inter[seed] = {"available": True, "accuracy_by_condition": vals,
+                       "teacher_effect_under_ramp": d1,
+                       "teacher_effect_under_immediate": d2,
+                       "difference_of_differences": d1 - d2}
+    dd = [v["difference_of_differences"] for v in inter.values()
+          if v.get("available")]
+    out["interaction"] = {
+        "per_seed": inter,
+        "mean_difference_of_differences": float(np.mean(dd)) if dd else None,
+        "std_difference_of_differences": (float(np.std(dd, ddof=1))
+                                          if len(dd) >= 2 else None),
+        "n_usable_seeds": len(dd),
+        "description_ko": ("(ramp_local - ramp_zero_teacher) - "
+                           "(immediate_local - immediate_zero_teacher). "
+                           "교정 효과가 복원 속도에 따라 달라지는지 본다."),
+    }
+    out["all_tests_at_same_end_gain_ko"] = (
+        "주 비교의 최종 시험은 모두 같은 end 배율에서 했다. 낮은 억제로 평가한 "
+        "점수와 섞지 않는다.")
+    return out
 
 
 def run_comparison(cfg: dict[str, Any], output_root: Path, device_choice: str,
@@ -9416,6 +11645,131 @@ class ReportBuilder:
         p = self.dir / name
         return read_json(p) if p.is_file() else None
 
+    def _report_inhibition(self, A: Callable[[str], None]) -> None:
+        """억제 점진 복원 실험 절. **저장된 JSON/CSV 에서만** 만든다."""
+        scan = self._load("inhibition_scan.json")
+        train = self._load("train.json")
+        pre = self._load("inhibition_pre_check.json")
+        is_inh_train = isinstance(train, dict) and \
+            train.get("task") == "inhibition-train"
+        if scan is None and not is_inh_train:
+            return
+        A("## 5-I. 억제 점진 복원 실험")
+        A("")
+        A("> `inhibition_gain` 은 억제성 뉴런의 **출력 효과** 배율이다. 세포를 "
+          "삭제하거나 발화를 0 으로 만들지 않고, `w0` 와 역전위도 바꾸지 않는다. "
+          "이 절차를 실제 뇌 발달 기제의 재현이라고 주장하지 않는다.")
+        A("")
+        if scan is not None:
+            A("### 작업 A — 학습 없는 억제 진단")
+            A("")
+            A(f"- 상태: **{scan.get('status')}** {scan.get('reason','')}")
+            A(f"- 검사한 배율: `{scan.get('values')}`")
+            A(f"- 판정 기준(실행 전 공개): `{scan.get('criteria')}`")
+            A("")
+            A("| 배율 | 전달 | IT 구별 | 무입력 | 포화 | 종합 |")
+            A("|---|---|---|---|---|---|")
+            for r in (scan.get("summary", {}).get("per_value") or []):
+                A(f"| {r.get('inhibition_gain')} | {r.get('transmits')} | "
+                  f"{r.get('it_distinguishable')} | {r.get('blank_response_ok')} | "
+                  f"{r.get('saturation_ok')} | "
+                  f"**{'사용 가능' if r.get('usable') else '사용 불가'}** |")
+            A("")
+            sm = scan.get("summary") or {}
+            A(f"- 학습에 쓸 수 있는 가장 낮은 배율: `{sm.get('lowest_usable_gain')}`")
+            A(f"- {sm.get('not_reduced_to_single_flag_ko','')}")
+            bn = sm.get("zero_gain_bottleneck")
+            if bn:
+                A("")
+                A("#### 배율 0 에서도 전달되지 않는다 (잔여 병목)")
+                A("")
+                A(f"- {bn.get('note_ko','')}")
+                A(f"- 처음 실패한 단계: `{bn.get('first_failed_stage')}`")
+                for c in bn.get("candidate_causes_ko", []):
+                    A(f"    - 원인 후보: {c}")
+            side = scan.get("no_learning_side_effects") or {}
+            A("")
+            A(f"- 진단 부작용 없음: theta_base 불변 "
+              f"`{side.get('theta_base_unchanged')}`, 고정 파라미터 불변 "
+              f"`{(side.get('fixed_parameters') or {}).get('unchanged')}`")
+            A("")
+        if is_inh_train:
+            A("### 작업 B — 점진 복원 학습")
+            A("")
+            sch = train.get("schedule") or {}
+            A(f"- 조건: `{train.get('condition')}` / 시드 `{train.get('seed')}` / "
+              f"교사 0 강제: `{train.get('zero_teacher')}`")
+            A(f"- 일정: {sch.get('start')} → {sch.get('end')} "
+              f"({sch.get('kind')}), warmup {sch.get('warmup_epochs')} + "
+              f"ramp {sch.get('ramp_epochs')} + hold {sch.get('hold_epochs')} = "
+              f"총 {sch.get('total_epochs')} 에폭")
+            A(f"- 준비 배율: `{train.get('prepared_at_inhibition_gain')}` / "
+              f"최종 평가 배율: `{train.get('final_eval_gain')}` "
+              f"(사용자 덮어씀: `{train.get('final_eval_gain_overridden_by_user')}`)")
+            if train.get("status") == STATUS_INSUFFICIENT_SIGNAL:
+                A(f"- 상태: **{STATUS_UPPER[STATUS_INSUFFICIENT_SIGNAL]}** — "
+                  f"{train.get('reason_ko','')}")
+                A(f"- 중단 지점: `{train.get('stopped_at')}`")
+                A(f"- {train.get('not_run_ko','')}")
+                d = train.get("diagnosis") or {}
+                for key in ("transmits", "it_distinguishable",
+                            "blank_response_ok", "saturation_ok"):
+                    v = d.get(key)
+                    if isinstance(v, dict):
+                        A(f"    - {key}: `{v.get('pass')}`")
+                A("")
+                return
+            A(f"- 상태: **{train.get('status')}** {train.get('reason','')}")
+            A(f"- 준비 산출물 불변: "
+              f"`{train.get('preparation_signatures_unchanged')}`")
+            tc = train.get("theta_change") or {}
+            A(f"- theta 변화: 평균 |Δθ| {tc.get('mean_abs_change_mV')} mV, "
+              f"마스크 밖 변화 {tc.get('n_changed_outside_mask')}개 (0 이어야 한다)")
+            A("")
+            dev = train.get("dev_history") or []
+            if dev:
+                A("| epoch | 단계 | 배율 | dev CE | dev 정확도 |")
+                A("|---|---|---|---|---|")
+                for d in dev:
+                    A(f"| {d.get('epoch')} | {d.get('stage')} | "
+                      f"{d.get('inhibition_gain')} | "
+                      f"{d.get('cross_entropy')} | {d.get('accuracy')} |")
+                A("")
+            test = train.get("test") or {}
+            A(f"- 최종 시험(교사 없음, 배율 {test.get('inhibition_gain')}): "
+              f"상태 `{test.get('status')}`, CE {test.get('cross_entropy')}, "
+              f"정확도 {test.get('accuracy')}, 다수 기준선 "
+              f"{test.get('majority_baseline')}")
+            lo = train.get("learning_outcome") or {}
+            A(f"- dev CE: start 배율 {lo.get('dev_ce_at_start_gain')} / "
+              f"end 배율 {lo.get('dev_ce_at_end_gain')}")
+            A(f"- {lo.get('cross_gain_comparison_warning_ko','')}")
+            A("")
+            A("#### 서로 다른 세 결론 (섞어 읽지 않는다)")
+            A("")
+            for k, v in (lo.get("separate_conclusions_ko") or {}).items():
+                A(f"- **{k}**: {v}")
+            A("")
+            drift = train.get("readout_drift") or []
+            if drift:
+                A("#### 읽기 장치 표류 (자동 재보정으로 숨기지 않는다)")
+                A("")
+                A("| epoch | 배율 | IT 표본간 분산 | IT 포화 비율 |")
+                A("|---|---|---|---|")
+                for d in drift:
+                    A(f"| {d.get('epoch')} | {d.get('inhibition_gain')} | "
+                      f"{d.get('it_variance_between_samples')} | "
+                      f"{d.get('it_saturated_fraction')} |")
+                A("")
+            cost = train.get("cost") or {}
+            A(f"- 계산량: 감각 forward 호출 {cost.get('sensory_forward_calls')} 회, "
+              f"episode {cost.get('n_episodes')} 개, "
+              f"벽시계 {cost.get('wall_seconds')} 초")
+            A("")
+        if pre is not None and not is_inh_train:
+            A(f"- 사전 전달 점검 배율: `{pre.get('inhibition_gain')}`")
+            A("")
+
     def build(self) -> Path:
         m = self.manifest
         L: list[str] = []
@@ -9456,7 +11810,8 @@ class ReportBuilder:
               f"|theta_fast| ≤ {thr.get('fast_bound_mV')} mV")
             A("- 임계값 고정은 `frozen_threshold` 대조군이다.")
         else:
-            A(f"- 발화 판정 임계값: **{THRESHOLD}** (이 실행에서는 고정)")
+            saved_threshold = thr.get("theta0_mV", thr.get("value", THRESHOLD))
+            A(f"- 발화 판정 임계값: **{saved_threshold}** (이 실행에서는 고정)")
         A(f"- 학습 파라미터 목록: {m.get('learning', {}).get('trainable')}")
         A(f"- 학습 조건: `{m.get('learning', {}).get('mode')}`")
         A("- 부호 규약: `r = a - t`. 과잉(r>0)이면 임계값을 올리고 부족(r<0)이면 내린다.")
@@ -9481,6 +11836,10 @@ class ReportBuilder:
             A(f"- 영역별 뉴런 수: {model.get('per_area')}")
             cal = model.get("w0_calibration", {})
             if cal:
+                if "calibration_reference_threshold_mV" in cal:
+                    A(f"- w0 보정 기준: 휴지막전위 대비 "
+                      f"{cal['calibration_reference_threshold_mV']} mV "
+                      f"(실제 발화 초기값 {cal.get('initial_firing_threshold_mV')} mV와 별도)")
                 A(f"- w0 보정: 기준 발화율 {cal.get('reference_presyn_rate_hz')} Hz, "
                   f"목표 배율 {cal.get('target_ratio')} "
                   f"({cal.get('note_ko','')})")
@@ -9512,44 +11871,7 @@ class ReportBuilder:
                 continue
             A(f"## {title} (`{name}`)")
             A("")
-            if name == "train.json" and data.get("status") == STATUS_INSUFFICIENT_SIGNAL:
-                # 학습 루프를 돌지 않았다. 없는 수치를 0 으로 채우지 않는다.
-                A(f"- 상태: **{STATUS_UPPER[STATUS_INSUFFICIENT_SIGNAL]}** — "
-                  f"{data.get('reason_ko','')}")
-                A(f"- 조건: `{data.get('mode')}` / 중단 지점: "
-                  f"`{data.get('stopped_at')}`")
-                A(f"- {data.get('not_run_ko','')}")
-                A("")
-                diag = data.get("diagnosis") or {}
-                A("### 왜 멈췄는가 (가능한 원인과 근거 수치)")
-                A("")
-                for c in diag.get("candidate_causes", []):
-                    A(f"- **`{c.get('cause')}`** — {c.get('evidence_ko','')}")
-                    for k, v in c.items():
-                        if k in ("cause", "evidence_ko", "what_to_do_ko"):
-                            continue
-                        A(f"    - {k}: `{v}`")
-                    if c.get("what_to_do_ko"):
-                        A(f"    - 다음에 볼 것: {c['what_to_do_ko']}")
-                A("")
-                rs = diag.get("rate_scale_by_area") or {}
-                if rs:
-                    A("| 영역 | rate_scale (Hz) | 양의 발화 표본 수 | 상태 |")
-                    A("|---|---|---|---|")
-                    for area, v in rs.items():
-                        A(f"| {area} | {v.get('rate_scale_hz')} | "
-                          f"{v.get('n_positive')} | {v.get('status')} |")
-                    A("")
-                itv = diag.get("it_variability") or {}
-                if itv:
-                    A(f"- 최상위 영역 표본 간 분산: `{itv.get('between_sample_variance')}` "
-                      f"/ 첫 표본과의 최대 차이: "
-                      f"`{itv.get('max_abs_difference_to_first')}` "
-                      f"/ 활성 비율: `{itv.get('active_fraction')}` "
-                      f"(준비 표본 {itv.get('n_prep_samples')}개)")
-                A(f"- {diag.get('single_cause_note_ko','')}")
-                A("")
-            elif name == "train.json":
+            if name == "train.json":
                 A(f"- 상태: **{data.get('status')}** {data.get('reason','')}")
                 A(f"- 조건: `{data.get('mode')}` / 순방향 호출 {data.get('forward_calls')}")
                 if data.get("theta_change") is not None:
@@ -9631,6 +11953,7 @@ class ReportBuilder:
                          if not isinstance(v, list) or len(v) < 20})[:4000])
                 A("```")
             A("")
+        self._report_inhibition(A)
         A("## 6. 가정 (ASSUMPTIONS)")
         A("")
         A("아래 표는 프로그램 안의 데이터이며 보고서마다 그대로 출력된다.")
@@ -9670,6 +11993,31 @@ class ReportBuilder:
         return out
 
 
+def _setup_korean_font(matplotlib: Any) -> bool:
+    """한글을 그릴 수 있는 폰트를 고른다. 없으면 False 를 돌려준다.
+
+    폰트를 설치하거나 내려받지 않는다. 시스템에 이미 있는 것만 쓴다. 없으면
+    그림 라벨을 영문으로 내려 네모 상자가 찍히지 않게 한다.
+    """
+    try:
+        from matplotlib import font_manager
+    except Exception:                                   # pragma: no cover
+        return False
+    candidates = ("Malgun Gothic", "AppleGothic", "NanumGothic",
+                  "NanumBarunGothic", "Noto Sans CJK KR", "Noto Sans KR",
+                  "Source Han Sans KR", "UnDotum", "Gulim", "Batang")
+    try:
+        available = {f.name for f in font_manager.fontManager.ttflist}
+    except Exception:                                   # pragma: no cover
+        return False
+    for name in candidates:
+        if name in available:
+            matplotlib.rcParams["font.family"] = name
+            matplotlib.rcParams["axes.unicode_minus"] = False
+            return True
+    return False
+
+
 def make_figures(run_dir: Path) -> list[str]:
     """**저장된 기록만** 읽어 그림을 만든다. 계산을 다시 돌리지 않는다."""
     try:
@@ -9680,14 +12028,21 @@ def make_figures(run_dir: Path) -> list[str]:
         raise RuntimeError(
             f"matplotlib 를 쓸 수 없다: {type(exc).__name__}: {exc}\n"
             f"  python -m pip install matplotlib") from exc
+    korean_ok = _setup_korean_font(matplotlib)
+
+    def L(ko: str, en: str) -> str:
+        """한글 폰트가 없으면 영문 라벨로 내린다 (네모 상자를 만들지 않는다)."""
+        return ko if korean_ok else en
+
     run_dir, resolve_note = resolve_run_dir(Path(run_dir))
     fig_dir = ensure_writable_dir(run_dir / "figures")
     made: list[str] = []
     # 모든 그림에 run ID·조건·seed·source 를 적는다.
     mani = read_json(run_dir / "manifest.json")
-    label = (f"run={run_dir.name} 조건={mani.get('learning', {}).get('mode')} "
-             f"seed={mani.get('config', {}).get('seed')} "
-             f"source=metrics.jsonl/train.json")
+    label = (f"run={run_dir.name} "
+             + L("조건", "cond") + f"={mani.get('learning', {}).get('mode')} "
+             + f"seed={mani.get('config', {}).get('seed')} "
+             + "source=metrics.jsonl/train.json")
     metrics = run_dir / "metrics.jsonl"
     if metrics.is_file():
         rows = [json.loads(l) for l in metrics.read_text(encoding="utf-8").splitlines() if l]
@@ -9729,21 +12084,21 @@ def make_figures(run_dir: Path) -> list[str]:
         if te:
             fig, ax = plt.subplots(1, 3, figsize=(14, 4))
             xs = list(range(len(te)))
-            for key, name in (("free_before_ce", "free (교사 전)"),
+            for key, name in (("free_before_ce", "free " + L("(교사 전)", "(pre-teacher)")),
                               ("guided_ce", "teacher-guided"),
                               ("post_update_free_ce", "post-update free")):
                 ax[0].plot(xs, [r.get(key) for r in te], label=name)
             ax[0].set_xlabel("episode"); ax[0].set_ylabel("cross entropy")
-            ax[0].legend(); ax[0].set_title("상태 조절 vs 영구 학습")
+            ax[0].legend(); ax[0].set_title(L("상태 조절 vs 영구 학습", "state control vs permanent"))
             ax[1].plot(xs, [r.get("commit_actual_norm") for r in te],
                        label="actual")
             ax[1].plot(xs, [r.get("commit_requested_norm") for r in te],
                        label="requested", linestyle="--")
             ax[1].set_xlabel("episode"); ax[1].set_ylabel("commit norm (mV)")
-            ax[1].legend(); ax[1].set_title("clipping 전/후 commit 크기")
+            ax[1].legend(); ax[1].set_title(L("clipping 전/후 commit 크기", "commit norm pre/post clip"))
             ax[2].plot(xs, [r.get("teacher_gate_fraction") for r in te])
             ax[2].set_xlabel("episode"); ax[2].set_ylabel("teacher gate fraction")
-            ax[2].set_title("교사 개입 비율")
+            ax[2].set_title(L("교사 개입 비율", "teacher gate fraction"))
             fig.suptitle(label)
             fig.tight_layout()
             p = fig_dir / "threshold_learning.png"
@@ -9760,11 +12115,11 @@ def make_figures(run_dir: Path) -> list[str]:
             centers = [(edges[i] + edges[i + 1]) / 2 for i in range(len(edges) - 1)]
             width = (edges[1] - edges[0]) * 0.45
             ax.bar([c - width / 2 for c in centers], tc["histogram_initial"],
-                   width=width, label=f"초기 ({tc.get('theta0_mV')} mV)")
+                   width=width, label=L("초기", "initial") + f" ({tc.get('theta0_mV')} mV)")
             ax.bar([c + width / 2 for c in centers], tc["histogram_current"],
-                   width=width, label="학습 후")
-            ax.set_xlabel("theta_base (mV)"); ax.set_ylabel("뉴런 수")
-            ax.legend(); ax.set_title(f"임계값 분포 — {label}")
+                   width=width, label=L("학습 후", "after learning"))
+            ax.set_xlabel("theta_base (mV)"); ax.set_ylabel(L("뉴런 수", "neuron count"))
+            ax.legend(); ax.set_title(L("임계값 분포", "theta_base histogram") + f" — {label}")
             fig.tight_layout()
             p = fig_dir / "threshold_histogram.png"
             fig.savefig(p, dpi=120); plt.close(fig)
@@ -9776,8 +12131,8 @@ def make_figures(run_dir: Path) -> list[str]:
         if usable:
             fig, ax = plt.subplots(figsize=(8, 4))
             names = [f"{a}\ne{r.get('epoch')}" for r, a, _ in usable]
-            for key, lbl in (("deficit_vs_erased_pixels", "부족 vs 삭제"),
-                             ("excess_vs_added_pixels", "과잉 vs 추가")):
+            for key, lbl in (("deficit_vs_erased_pixels", L("부족 vs 삭제", "deficit vs erased")),
+                             ("excess_vs_added_pixels", L("과잉 vs 추가", "excess vs added"))):
                 ax.plot(names, [(v.get(key) or {}).get("iou") for _, _, v in usable],
                         marker="o", label=lbl)
             ax.set_ylabel("IoU"); ax.legend()
@@ -9786,21 +12141,129 @@ def make_figures(run_dir: Path) -> list[str]:
             p = fig_dir / "correction_map_agreement.png"
             fig.savefig(p, dpi=120); plt.close(fig)
             made.append(str(p))
+    # --- 억제 실험 그림: 저장된 CSV/JSON 에서만 만든다 -------------------
+    sched_csv = run_dir / "inhibition_schedule.csv"
+    if sched_csv.is_file():
+        rows = list(csv.DictReader(sched_csv.open(encoding="utf-8")))
+        rows = [r for r in rows if r.get("epoch") not in (None, "", "-1")]
+        if rows:
+            fig, ax = plt.subplots(figsize=(8, 4))
+            by_cond: dict[str, list[tuple[int, float, float]]] = {}
+            for r in rows:
+                try:
+                    e = int(r["epoch"])
+                    pa = float(r["planned_alpha"])
+                    aa = float(r["actual_alpha"])
+                except (TypeError, ValueError):
+                    continue
+                by_cond.setdefault(r.get("condition", "?"), []).append((e, pa, aa))
+            for cond, vals in by_cond.items():
+                vals.sort()
+                ax.plot([v[0] for v in vals], [v[1] for v in vals],
+                        linestyle="--", label=f"{cond} " + L("예정", "planned"))
+                ax.plot([v[0] for v in vals], [v[2] for v in vals],
+                        marker="o", markersize=3, label=f"{cond} " + L("실제", "actual"))
+            ax.set_xlabel("epoch"); ax.set_ylabel("inhibition_gain")
+            ax.set_ylim(-0.02, 1.02)
+            ax.legend(fontsize=7); ax.set_title(L("억제 배율 일정", "Inhibition gain schedule") + f" — {label}")
+            fig.tight_layout()
+            pth = fig_dir / "inhibition_schedule.png"
+            fig.savefig(pth, dpi=120); plt.close(fig)
+            made.append(str(pth))
+
+    learn_csv = run_dir / "learning_metrics.csv"
+    if learn_csv.is_file():
+        rows = list(csv.DictReader(learn_csv.open(encoding="utf-8")))
+        dev = [r for r in rows if r.get("kind") == "dev"]
+        if dev:
+            fig, ax = plt.subplots(1, 2, figsize=(11, 4))
+            xs, ce, alpha = [], [], []
+            for r in dev:
+                try:
+                    xs.append(int(r["epoch"]))
+                    ce.append(float(r["dev_ce"]) if r.get("dev_ce") else None)
+                    alpha.append(float(r["inhibition_gain"]))
+                except (TypeError, ValueError):
+                    continue
+            ax[0].plot(xs, ce, marker="o")
+            ax[0].set_xlabel("epoch"); ax[0].set_ylabel("dev CE " + L("(교사 없음)", "(teacher-free)"))
+            ax[0].set_title("dev CE")
+            ax2 = ax[0].twinx()
+            ax2.plot(xs, alpha, color="gray", linestyle=":")
+            ax2.set_ylabel("inhibition_gain", color="gray")
+            th_m, th_s = [], []
+            for r in dev:
+                th_m.append(float(r["theta_mean_mV"])
+                            if r.get("theta_mean_mV") else None)
+                th_s.append(float(r["theta_std_mV"])
+                            if r.get("theta_std_mV") else None)
+            ax[1].plot(xs, th_m, marker="o", label=L("평균", "mean"))
+            ax[1].plot(xs, th_s, marker="s", label=L("표준편차", "std"))
+            ax[1].set_xlabel("epoch"); ax[1].set_ylabel("theta_base (mV)")
+            ax[1].legend(); ax[1].set_title(L("임계값 변화", "theta_base change"))
+            fig.suptitle(label)
+            fig.tight_layout()
+            pth = fig_dir / "inhibition_learning.png"
+            fig.savefig(pth, dpi=120); plt.close(fig)
+            made.append(str(pth))
+
+    scan_json = run_dir / "inhibition_scan.json"
+    if scan_json.is_file():
+        scan = read_json(scan_json) or {}
+        per = (scan.get("summary") or {}).get("per_value") or []
+        if per:
+            fig, ax = plt.subplots(figsize=(8, 4))
+            gains = [float(r["inhibition_gain"]) for r in per]
+            keys = [("transmits", L("전달", "transmits")),
+                    ("it_distinguishable", L("IT 구별", "IT distinct")),
+                    ("blank_response_ok", L("무입력", "blank ok")),
+                    ("saturation_ok", L("포화", "saturation ok"))]
+            for j, (k, ko) in enumerate(keys):
+                ys = [j + (0.35 if r.get(k) else 0.0) for r in per]
+                ax.plot(gains, ys, marker="o", linestyle="none", label=ko)
+            ax.set_yticks([j + 0.18 for j in range(len(keys))])
+            ax.set_yticklabels([ko for _, ko in keys])
+            ax.set_xlabel("inhibition_gain")
+            ax.set_title(L("배율별 판정 (위=통과)", "Verdict by gain (upper=pass)")
+                         + f" — {label}")
+            ax.legend(fontsize=7)
+            fig.tight_layout()
+            pth = fig_dir / "inhibition_scan.png"
+            fig.savefig(pth, dpi=120); plt.close(fig)
+            made.append(str(pth))
+
+    layer_jsonl = run_dir / "layer_metrics.jsonl"
+    if layer_jsonl.is_file():
+        rows = [json.loads(l) for l in
+                layer_jsonl.read_text(encoding="utf-8").splitlines() if l]
+        rows = [r for r in rows if not r.get("is_blank")]
+        if rows:
+            groups: dict[str, dict[float, list[float]]] = {}
+            for r in rows:
+                if r.get("layer") not in ("L2", "L3") or \
+                        r.get("cell_type") != "pyramidal":
+                    continue
+                g = groups.setdefault(r["area"], {})
+                g.setdefault(float(r["inhibition_gain"]), []).append(
+                    float(r.get("active_fraction") or 0.0))
+            if groups:
+                fig, ax = plt.subplots(figsize=(8, 4))
+                for area, byg in sorted(groups.items()):
+                    xs = sorted(byg)
+                    ax.plot(xs, [float(np.mean(byg[x])) for x in xs],
+                            marker="o", label=area)
+                ax.set_xlabel("inhibition_gain")
+                ax.set_ylabel(L("L2/L3 흥분성 활성 뉴런 비율",
+                                  "L2/L3 excitatory active fraction"))
+                ax.legend(); ax.set_title(L("영역별 활성 비율", "Active fraction by area")
+                             + f" — {label}")
+                fig.tight_layout()
+                pth = fig_dir / "inhibition_area_activity.png"
+                fig.savefig(pth, dpi=120); plt.close(fig)
+                made.append(str(pth))
+
     if not made:
         have = sorted(f.name for f in run_dir.iterdir() if f.is_file())
-        train_status = None
-        if (run_dir / "train.json").is_file():
-            train_status = (read_json(run_dir / "train.json") or {}).get("status")
-        if train_status == STATUS_INSUFFICIENT_SIGNAL:
-            raise RuntimeError(
-                f"이 실행은 준비 단계에서 중단됐다 (status="
-                f"{STATUS_UPPER[STATUS_INSUFFICIENT_SIGNAL]}): {run_dir}\n"
-                f"  학습 루프를 돌지 않았으므로 그릴 학습 곡선이 없다. 없는 곡선을 "
-                f"만들어내지 않는다.\n"
-                f"  멈춘 이유는 report_ko.md 의 '왜 멈췄는가' 절과 "
-                f"preparation.json 에 수치와 함께 들어 있다.\n"
-                f"  먼저 메뉴 3(전달 진단)으로 어느 단계에서 신호가 끊기는지 "
-                f"확인하라.")
         raise RuntimeError(
             f"이 실행 폴더에는 그릴 수 있는 기록이 없다: {run_dir}\n"
             f"  그림은 metrics.jsonl (학습/평가 행) 또는 train.json 의 "
@@ -9858,6 +12321,28 @@ class ValidationSuite:
         self.tiny_cfg["deterministic"] = False
         self._model: CorticalModel | None = None
 
+    def _legacy_cfg(self) -> dict[str, Any]:
+        cfg = json.loads(json.dumps(self.tiny_cfg))
+        cfg["training"].update(mode="all_neuron_gain_spsa", trainable_allowlist=["z"])
+        cfg["threshold_learning"].update(enabled=False, condition="frozen_threshold")
+        cfg["threshold"]["trainable"] = False
+        return cfg
+
+    def _fit_train_normalization(self, model: CorticalModel) -> None:
+        """분류 train 자료만 사용한다. 진단 자극/시험 영상으로 추정하지 않는다."""
+        t = require_torch()
+        ds = build_dataset(model.cfg, SeedStreams(int(model.cfg["seed"])))
+        train = ds.split(ds.build())["train"]
+        if not train:
+            raise ValueError("검증 fixture의 train 분할이 비어 있다.")
+        sampled = []
+        for st in train[:16]:
+            img = t.tensor(st.frames[0].transpose(2, 0, 1)[None],
+                           dtype=model.dtype, device=model.device)
+            val, _ = model.sampler.sample(model.encoder.encode(img))
+            sampled.append(val)
+        model.encoder.fit_normalization(t.cat(sampled, dim=0), "train")
+
     # -- 공용 작은 모델 -------------------------------------------------
     def model(self) -> CorticalModel:
         if self._model is None:
@@ -9896,7 +12381,7 @@ class ValidationSuite:
     # ==================================================================
     def run_all(self, only: Sequence[str] | None = None) -> dict[str, Any]:
         checks = [
-            self.check_01_view_ids, self.check_02_threshold_is_15,
+            self.check_01_view_ids, self.check_02_threshold_initial,
             self.check_03_only_p_changes, self.check_04_single_application,
             self.check_05_gpu_sum_vs_cpu_reference, self.check_06_delay_ring,
             self.check_07_zero_gain_blocks_output, self.check_08_membrane,
@@ -9927,7 +12412,21 @@ class ValidationSuite:
             self.check_43_snapshot_restores_threshold_state,
             self.check_44_dataset_paired_and_labels,
             self.check_45_run_dir_resolution,
-            self.check_46_insufficient_signal_is_explained,
+            self.check_46_checkpoint_selection,
+            self.check_47_unlabelled_image_batch,
+            self.check_48_initial_state_before_simulation,
+            # --- 억제 점진 복원 실험 (명세 8절 1~11) ---
+            self.check_49_inhibition_alpha_one_regression,
+            self.check_50_inhibition_synthetic_emission,
+            self.check_51_inhibition_alpha_zero_boundary,
+            self.check_52_inhibition_delay_timing,
+            self.check_53_inhibition_both_arrival_paths,
+            self.check_54_inhibition_schedule,
+            self.check_55_inhibition_zero_teacher,
+            self.check_56_inhibition_diagnostic_purity,
+            self.check_57_inhibition_no_eval_leak,
+            self.check_58_inhibition_structure_frozen,
+            self.check_59_inhibition_resume,
         ]
         results: list[CheckResult] = []
         for fn in checks:
@@ -9999,10 +12498,10 @@ class ValidationSuite:
             {"neuron_id": nid, "n_outgoing": out["n"],
              "layout": NeuronView3x3.layout_description()})
 
-    def check_02_threshold_is_15(self) -> CheckResult:
-        """생성 직후 모든 뉴런의 임계값이 정확히 15 이고, 고정 조건에서 불변인지.
+    def check_02_threshold_initial(self) -> CheckResult:
+        """생성 직후 모든 뉴런의 임계값이 정확히 THETA0 이고, 고정 조건에서 불변인지.
 
-        이번 기본 조건은 15 에서 **출발해 학습**하므로 '항상 15' 를 요구하지 않는다.
+        이번 기본 조건은 THETA0 에서 출발해 학습하므로 초기값 영구 고정을 요구하지 않는다.
         요구하는 것은 (a) 초기값이 정확히 THETA0, (b) 학습 대상 마스크 밖은 불변,
         (c) frozen_threshold 조건에서 theta_base 가 변하지 않는다는 것이다.
         """
@@ -10032,8 +12531,8 @@ class ValidationSuite:
         passed = (initial_ok and mask_ok and frozen_outside and moved_inside
                   and frozen_condition_ok and in_bounds)
         return CheckResult(
-            "check_02_threshold_is_15",
-            "임계값 초기값 15, 학습 대상 마스크, 고정 조건 불변, 경계 준수",
+            "check_02_threshold_initial",
+            f"임계값 초기값 {THETA0}, 학습 대상 마스크, 고정 조건 불변, 경계 준수",
             STATUS_PASSED if passed else STATUS_FAILED,
             f"생성 직후 theta_base min==max=={THETA0}; 학습 대상은 L2/L3 흥분성만; "
             f"마스크 밖은 commit 후에도 불변; frozen_threshold 는 commit 이 0; "
@@ -10048,12 +12547,13 @@ class ValidationSuite:
 
     def check_03_only_p_changes(self) -> CheckResult:
         t = require_torch()
-        m = self._fresh_model()
+        cfg_legacy = self._legacy_cfg()
+        m = self._fresh_model(cfg_legacy)
         before = dict(m.fixed_hashes)
         w0_before = tensor_hash(m.synapses.w0_nS)
         z_before = m.gains.z.clone()
         seeds = SeedStreams(int(self.tiny_cfg["seed"]))
-        trainer = GainSPSATrainer(self.tiny_cfg, m, seeds)
+        trainer = GainSPSATrainer(cfg_legacy, m, seeds)
         stim = self._tiny_stim("shape")
         img = t.tensor(np.stack([stim.frames[0]]).transpose(0, 3, 1, 2),
                        dtype=self.dtype, device=self.device)
@@ -10075,9 +12575,9 @@ class ValidationSuite:
             "고정 텐서 해시가 하나도 바뀌지 않고 w0 해시가 같다",
             {"changed_fixed_keys": changed, "w0_unchanged": w0_same,
              "z_changed": z_changed},
-            "tiny preset, SPSA 1 스텝 실제 실행",
+            "legacy P-only tiny preset, SPSA 1 스텝 실제 실행",
             {"n_fixed_checked": len(before),
-             "trainable_allowlist": self.tiny_cfg["training"]["trainable_allowlist"]})
+             "trainable_allowlist": cfg_legacy["training"]["trainable_allowlist"]})
 
     def check_04_single_application(self) -> CheckResult:
         """한 사건이 두 번 반영되지 않고, 잔류 전도도와 새 입력이 구분되는지."""
@@ -10561,46 +13061,47 @@ class ValidationSuite:
         lid = a.layer_id.detach().to("cpu").numpy()
         aid = a.area_id.detach().to("cpu").numpy()
         v1 = aid == a.area_names.index("V1")
-        expected = omap.evaluate(uv[v1, 0], uv[v1, 1])
-        max_err = float(np.max(np.abs(ori[v1] - expected)))
+        coords = uv[v1].astype(np.float64)
+        expected = omap.evaluate(coords[:, 0], coords[:, 1])
+        # 방향은 pi 주기다. 저장 dtype의 반올림 한계를 수식으로 정한다.
+        angular_error = (ori[v1].astype(np.float64) - expected + math.pi / 2) % math.pi - math.pi / 2
+        max_err = float(np.max(np.abs(angular_error)))
+        tolerance = float(8 * np.finfo(ori.dtype).eps * math.pi)
         layers = sorted(set(lid[v1].tolist()))
         n_maps = len({m.maps[k].signature for k in m.maps if k == "V1"})
-        passed = deterministic and max_err < 1e-9 and n_maps == 1 and len(layers) >= 2
+        passed = deterministic and max_err <= tolerance and n_maps == 1 and len(layers) >= 2
         return CheckResult(
             "check_13_shared_orientation_map", "층 간 공통 방향 지도 일치",
             STATUS_PASSED if passed else STATUS_FAILED,
             "V1 의 모든 층 뉴런의 선호 방향이 하나의 지도를 표면 좌표에서 평가한 값과 "
-            "1e-9 안에서 같다",
-            {"map_deterministic": deterministic, "max_abs_error": max_err,
+            f"8*eps(dtype)*pi={tolerance:.3g} 안에서 같다 (pi 주기 거리)",
+            {"map_deterministic": deterministic, "max_abs_error": max_err, "tolerance": tolerance,
              "n_v1_maps": n_maps, "n_layers_checked": len(layers)},
             "tiny preset, 실제 배치된 뉴런의 메타데이터",
             {"note_ko": "지도 일치는 구조 검사다. 실제 발화 선택성은 check_12 에서 따로 본다."})
 
     def check_14_transmission(self) -> CheckResult:
-        """망막->LGN->V1 전달 양성 대조와 무입력 대조 (작은 회로로 대신하지 않는다)."""
-        m_pos = self._fresh_model()
-        pos = transmission_diagnostic(m_pos, self._tiny_stim("grating"), 40)
-        m_neg = self._fresh_model()
-        m_neg.encoder.load_state_dict(m_pos.encoder.state_dict())
-        neg = transmission_diagnostic(m_neg, self._tiny_stim("dark"), 40)
-        chain_ok = pos["chain_ok"]
-        quiet = neg["by_area"].get("V1", {}).get("total_spikes", 0) == 0
-        passed = bool(chain_ok)
+        cfg = json.loads(json.dumps(self.cfg))
+        m_pos = self._fresh_model(cfg)
+        self._fit_train_normalization(m_pos)
+        gen = StimulusGenerator(cfg, SeedStreams(int(cfg["seed"])))
+        diags = gen.diagnostic_set()
+        pos_stim = next(st for st in diags if st.stimulus_id == "diag_ori_00")
+        neg_stim = next(st for st in diags if st.stimulus_id == "diag_dark")
+        n_steps = int(round(cfg["engine"]["sample_ms"] / cfg["engine"]["dt_ms"]))
+        pos = transmission_diagnostic(m_pos, pos_stim, n_steps)
+        neg = transmission_diagnostic(m_pos, neg_stim, n_steps)
+        quiet = all(v["total_spikes"] == 0 for v in neg["by_area"].values())
         return CheckResult(
-            "check_14_transmission", "망막->LGN->V1 전달 양성/무입력 대조",
-            STATUS_PASSED if passed else STATUS_FAILED,
-            "자극이 있으면 Retina/LGN/V1 각각에서 스파이크 > 0",
-            {"positive_by_area": {k: v["total_spikes"] for k, v in pos["by_area"].items()},
-             "positive_rates_hz": {k: v["mean_rate_hz"] for k, v in pos["by_area"].items()},
-             "threshold_margin_u": {k: v["threshold_margin_u_max"]
-                                    for k, v in pos["by_area"].items()},
-             "silent_chain_areas": pos["silent_chain_areas"],
-             "no_input_v1_spikes": neg["by_area"].get("V1", {}).get("total_spikes"),
-             "no_input_quiet": quiet},
-            "tiny preset 전체 배선 (작은 대체 회로가 아니다)",
-            {"input_code": pos["input_code"], "drive": pos["drive"],
-             "note_ko": ("전달이 약해도 임계값을 낮추거나 라벨을 입력에 넣지 않는다. "
-                         "입력 파형·전류·실제 발화율·임계 여유를 위에 그대로 적는다.")})
+            "check_14_transmission", "설정된 전체 감각 경로와 L4/L2/L3 E의 전달 확인",
+            STATUS_PASSED if pos["chain_ok"] and quiet else STATUS_FAILED,
+            "Retina/LGN 및 모든 피질 영역의 L4 E, L2/L3 E에서 발화; 무입력은 전체 정지",
+            {"positive_by_area": {k: v["total_spikes"] for k,v in pos["by_area"].items()},
+             "positive_by_stage": pos["by_stage"], "failed_stages": pos["failed_stages"],
+             "first_failed_stage": pos["first_failed_stage"], "no_input_quiet": quiet,
+             "n_steps": n_steps, "normalization": m_pos.encoder.norm_info},
+            f"사용자가 선택한 {cfg['meta']['preset']} preset 전체, train-only 정규화",
+            {"note_ko": "실패를 통과로 바꾸기 위해 임계값/연결 강도를 조정하지 않는다."})
 
     def check_15_feedback_apical(self) -> CheckResult:
         """상위->L1/apical 고정 배선이 표적 막전위를 실제로 바꾸는지 (F07).
@@ -10708,9 +13209,10 @@ class ValidationSuite:
         이것은 '손실 자체가 0' 이라는 뜻이 아니다.
         """
         t = require_torch()
-        m = self._fresh_model()
+        cfg_legacy = self._legacy_cfg()
+        m = self._fresh_model(cfg_legacy)
         seeds = SeedStreams(int(self.tiny_cfg["seed"]))
-        trainer = GainSPSATrainer(self.tiny_cfg, m, seeds)
+        trainer = GainSPSATrainer(cfg_legacy, m, seeds)
         stim = self._tiny_stim("shape")
         img = t.tensor(np.stack([stim.frames[0]]).transpose(0, 3, 1, 2),
                        dtype=self.dtype, device=self.device)
@@ -10742,7 +13244,7 @@ class ValidationSuite:
             {"max_abs_delta_z": dz, "max_abs_delta_P": dP,
              "loss_plus": rec["loss_plus_mean"], "loss_minus": rec["loss_minus_mean"],
              "loss_is_nonzero": loss_not_zero},
-            "tiny preset, 손실만 상수로 바꾼 실제 SPSA 스텝")
+            "legacy P-only tiny preset, 손실만 상수로 바꾼 실제 SPSA 스텝")
 
     def check_18_spsa_on_quadratic(self) -> CheckResult:
         """매끄러운 이차함수에서 SPSA 수식의 부호·스케일 검사.
@@ -10794,7 +13296,8 @@ class ValidationSuite:
         기준을 두지 않는 측정 항목이므로 상태는 ``measured`` 다.
         """
         t = require_torch()
-        m = self._fresh_model()
+        cfg_legacy = self._legacy_cfg()
+        m = self._fresh_model(cfg_legacy)
         seeds = SeedStreams(int(self.tiny_cfg["seed"]))
         stim = self._tiny_stim("shape")
         img = t.tensor(np.stack([stim.frames[0]]).transpose(0, 3, 1, 2),
@@ -10804,7 +13307,7 @@ class ValidationSuite:
         labels = t.tensor([0], dtype=t.long, device=self.device)
         rows: list[dict[str, Any]] = []
         for c in (0.002, 0.02, 0.2):
-            cfg = json.loads(json.dumps(self.tiny_cfg))
+            cfg = json.loads(json.dumps(cfg_legacy))
             cfg["training"]["c"] = c
             tr = GainSPSATrainer(cfg, m, seeds)
             zero = 0
@@ -10826,7 +13329,7 @@ class ValidationSuite:
             "기준 없음 — 측정만 한다. 작은 섭동에서 0 차이가 많고 큰 섭동에서 잡음이 "
             "커지는 것이 이 방법의 알려진 성질이다",
             rows,
-            "tiny preset, 실제 스파이크 모델",
+            "legacy P-only tiny preset, 실제 스파이크 모델",
             {"note_ko": ("이 결과로 '정확한 기울기' 를 검증했다고 말하지 않는다. "
                          "단일 단계 손실 감소나 수렴을 보장하지도 않는다.")})
 
@@ -10935,6 +13438,15 @@ class ValidationSuite:
                                                    else "cpu"))
             res_a = cont.run_train(epochs=1, max_samples=4)
             ck_a = CheckpointManager(cont.run_dir).latest()
+            if ck_a is None:
+                return CheckResult(
+                    "check_22_resume", "저장·재개와 연속 실행 비교",
+                    STATUS_NOT_RUN if res_a.get("status") == STATUS_INSUFFICIENT_SIGNAL else STATUS_FAILED,
+                    "실제로 완료된 학습 배치가 있어야 재개 결과를 비교할 수 있다",
+                    {"training_status": res_a.get("status"), "checkpoint_created": False,
+                     "preparation": res_a.get("preparation"),
+                     "reason_ko": "준비/학습이 끝나지 않아 재개 비교를 실행하지 못했다. 통과가 아니다."},
+                    "tiny preset 실제 실행 전제 검사")
             meta_a, tens_a = CheckpointManager(cont.run_dir).load(ck_a)
 
             split = ExperimentRunner(cfg, output_root=tmp / "split",
@@ -10952,6 +13464,8 @@ class ValidationSuite:
             meta_b, tens_b = CheckpointManager(run_dir_b).load(ck_b)
 
             z_diff = float(np.max(np.abs(tens_a["z"] - tens_b["z"])))
+            theta_diff = float(np.max(np.abs(tens_a["theta_base"] - tens_b["theta_base"])))
+            preparation_same = meta_a.get("preparation_signatures") == meta_b.get("preparation_signatures")
             order_same = bool(np.array_equal(tens_a["order"], tens_b["order"]))
             split_same = meta_a["split_ids"] == meta_b["split_ids"]
             digest_same = meta_a["data_digest"] == meta_b["data_digest"]
@@ -10961,16 +13475,17 @@ class ValidationSuite:
             rows_a = meta_a.get("committed_rows", {})
             rows_b = meta_b.get("committed_rows", {})
             tol = 1e-5 if self.dtype == t.float32 else 1e-12
-            passed = (z_diff <= tol and order_same and split_same and digest_same
-                      and norm_same)
+            passed = (z_diff <= tol and theta_diff <= tol and preparation_same
+                      and order_same and split_same and digest_same and norm_same)
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
         return CheckResult(
             "check_22_resume", "저장·재개가 연속 실행과 같은 결과를 주는지",
             STATUS_PASSED if passed else STATUS_FAILED,
-            f"연속 실행과 중단·재개의 최종 z 최대 차이 <= {tol}, 자극 순서·분할·자료 "
+            f"연속 실행과 중단·재개의 최종 z/theta_base 최대 차이 <= {tol}, 자극 순서·분할·자료 "
             f"해시·정규화 계수가 모두 같다",
-            {"max_abs_z_difference": z_diff, "order_identical": order_same,
+            {"max_abs_z_difference": z_diff, "max_abs_theta_difference": theta_diff,
+             "preparation_identical": preparation_same, "order_identical": order_same,
              "splits_identical": split_same, "data_digest_identical": digest_same,
              "normalization_identical": norm_same,
              "committed_rows_continuous": rows_a, "committed_rows_resumed": rows_b,
@@ -11014,7 +13529,7 @@ class ValidationSuite:
              "bypassed_threshold_with_forced_spikes": forced_spikes_used},
             "tiny preset, Poisson 모드 실제 구동 텐서",
             {"note_ko": ("Poisson 사건은 전도도 펄스로 들어가며 모든 뉴런이 같은 "
-                         "임계값 15 판정을 거친다.")})
+                         f"초기 임계값 {THETA0} 판정을 거친다.")})
 
     def check_24_diagnostics_pure(self) -> CheckResult:
         """진단·시각화 전후 모델/P/RNG 상태가 바뀌지 않는지 (F25)."""
@@ -11025,7 +13540,7 @@ class ValidationSuite:
         m.run(drive, m.gains.replicas(None), 20)
         fixed_before = dict(m.fixed_hashes)
         z_before = m.gains.z.clone()
-        rng_before = SeedStreams(int(self.tiny_cfg["seed"])).state_dict()
+        rng_before = m.seeds.state_dict()
         _ = transmission_diagnostic(m, stim, 20)
         view = m.neuron_view(int(m.decoder.neuron_ids[0]), run_id="x", sample_id=0)
         _ = view.to_dict()
@@ -11035,7 +13550,7 @@ class ValidationSuite:
         fixed_after = m._compute_fixed_hashes()
         changed = sorted(k for k in fixed_before if fixed_before[k] != fixed_after.get(k))
         z_same = bool(t.equal(z_before, m.gains.z))
-        rng_same = rng_before == SeedStreams(int(self.tiny_cfg["seed"])).state_dict()
+        rng_same = rng_before == m.seeds.state_dict()
         passed = (not changed) and z_same and rng_same and abl["n_synapses_removed"] > 0
         return CheckResult(
             "check_24_diagnostics_pure", "진단·조회·소거 비교가 모델을 바꾸지 않음",
@@ -11246,7 +13761,7 @@ class ValidationSuite:
                 "verdict": "not_improved" in text,
                 "test_ce": "1.9459" in text,
                 "majority_baseline": "0.1428" in text,
-                "threshold_15": f"{THRESHOLD}" in text,
+                "threshold_initial": f"{THRESHOLD}" in text,
                 "no_invented_accuracy": "0.99" not in text,
                 "assumptions_printed": "ASSUMPTIONS" in text
                 and ASSUMPTIONS[0].key in text,
@@ -11317,6 +13832,622 @@ class ValidationSuite:
     # ==================================================================
     # 명세 18절 A~E: 임계값 학습 경로 전용 검사
     # ==================================================================
+    # ==================================================================
+    # 억제 점진 복원 실험 검증 (명세 8절 1~11)
+    # ==================================================================
+    def _inh_cfg(self, **over: Any) -> dict[str, Any]:
+        c = json.loads(json.dumps(self.tiny_cfg))
+        c["inhibition"].update(over)
+        return c
+
+    def check_49_inhibition_alpha_one_regression(self) -> CheckResult:
+        """검사 1 — ``alpha=1`` 회귀 동등성.
+
+        같은 초기값·입력·난수에서 배율 1 경로가 **변경 전과 같은** 발화·전도도·
+        전압을 만드는지 본다. 배율 1 은 IEEE754 에서 정확한 항등 곱이므로
+        결정론 경로에서는 비트 단위로 같아야 한다.
+        """
+        require_torch()
+        n_steps = int(round(self.tiny_cfg["engine"]["sample_ms"]
+                            / self.tiny_cfg["engine"]["dt_ms"]))
+        stim = self._tiny_stim("shape")
+
+        def measure(alpha: float, deterministic: bool) -> dict[str, Any]:
+            cfg = json.loads(json.dumps(self.tiny_cfg))
+            cfg["deterministic"] = bool(deterministic)
+            m = self._fresh_model(cfg)
+            m.set_inhibition_gain(alpha, reason="check_49")
+            drive, _ = self._prepared(m, stim, n_steps)
+            P = m.gains.replicas(None)
+            out = m.run(drive, P, n_steps)
+            return {"spikes": tensor_hash(out["spike_count"]),
+                    "V": tensor_hash(m.state.V), "g": tensor_hash(m.state.g),
+                    "n_spikes": int(out["spike_count"].sum()),
+                    "logits": tensor_hash(out["logits"])}
+
+        fast_one = measure(1.0, False)
+        fast_ref = measure(1.0, False)      # 같은 경로 재현성
+        det_one = measure(1.0, True)
+        low = measure(0.01, False)
+        identical_fast = (fast_one == fast_ref)
+        # 배율 1 과 배율 0.01 이 같다면 배율이 아무 일도 하지 않은 것이다
+        gain_has_effect = (fast_one["spikes"] != low["spikes"]
+                           or fast_one["V"] != low["V"])
+        passed = identical_fast and gain_has_effect
+        return CheckResult(
+            "check_49_inhibition_alpha_one_regression",
+            "alpha=1 회귀 동등성과 배율의 실제 효과",
+            STATUS_PASSED if passed else STATUS_FAILED,
+            "같은 시드·입력에서 alpha=1 실행이 재현되고, alpha=0.01 은 다른 결과를 "
+            "낸다 (배율이 실제로 작동한다)",
+            {"alpha1_reproducible": identical_fast,
+             "alpha1_vs_alpha001_differs": gain_has_effect,
+             "alpha1_spikes": fast_one["n_spikes"],
+             "alpha001_spikes": low["n_spikes"],
+             "deterministic_path_hash": det_one["spikes"],
+             "fast_path_hash": fast_one["spikes"]},
+            "tiny preset 실제 엔진 4회 실행",
+            {"tolerance_note_ko": (
+                "결정론 경로(deterministic=True)는 같은 하드웨어·버전에서 합산 "
+                "순서가 고정되므로 비트 단위 비교를 쓴다. 빠른 CUDA 경로는 "
+                "index_add_ 의 원자적 합산 때문에 실행마다 마지막 비트가 다를 수 "
+                "있으므로, 여기서는 같은 경로끼리만 비교한다."),
+             "deterministic_hash_equals_fast": det_one["spikes"] == fast_one["spikes"]})
+
+    def check_50_inhibition_synthetic_emission(self) -> CheckResult:
+        """검사 2 — 합성 발신/도착: 억제 q 와 도착 증가분만 alpha 에 비례한다.
+
+        전체 네트워크 출력이 선형 비례한다고 요구하지 않는다. 발신 단계의
+        ``q`` 와 그로부터 나온 도착 증가분만 본다.
+        """
+        t = require_torch()
+        m = self._fresh_model()
+        n = m.neurons.n
+        exc = (m.neurons.dale > 0)
+        inh = (m.neurons.dale < 0)
+        # 모든 뉴런이 발화한 것처럼 고정 스파이크를 만든다
+        s_f = t.ones((1, 1, n), dtype=self.dtype, device=self.device)
+        P = m.gains.replicas(None)
+        rows: dict[str, Any] = {}
+        prev: dict[float, Any] = {}
+        for alpha in (1.0, 0.5, 0.1, 0.0):
+            m.set_inhibition_gain(alpha, reason="check_50")
+            q = m.engine.inhibition.apply_to_emission(P.unsqueeze(1) * s_f)
+            prev[alpha] = q.clone()
+            rows[f"alpha_{alpha}"] = {
+                "inhibitory_q_sum": float(q[0, 0][inh].sum()),
+                "excitatory_q_sum": float(q[0, 0][exc].sum()),
+            }
+        base_inh = rows["alpha_1.0"]["inhibitory_q_sum"]
+        base_exc = rows["alpha_1.0"]["excitatory_q_sum"]
+        prop_ok = True
+        for alpha in (0.5, 0.1, 0.0):
+            want = base_inh * alpha
+            got = rows[f"alpha_{alpha}"]["inhibitory_q_sum"]
+            if abs(got - want) > max(1e-6, abs(want) * 1e-6):
+                prop_ok = False
+        exc_ok = all(abs(rows[f"alpha_{a}"]["excitatory_q_sum"] - base_exc)
+                     <= 1e-9 for a in (0.5, 0.1, 0.0))
+        # 도착 증가분도 같은 비례를 따르는지 (w0 는 불변)
+        w0_hash = tensor_hash(m.synapses.w0_nS)
+        m.prepare(1, 1)
+        arrivals: dict[float, float] = {}
+        for alpha in (1.0, 0.5, 0.0):
+            m.reset_dynamics()
+            m.ring.write(0, prev[alpha])
+            delay = min(d for d, _ in m.synapses.delay_groups)
+            dg = m.engine._gather_arrivals(m.ring, delay, 1, 1)
+            arrivals[alpha] = float(dg[..., RECEPTOR_INDEX["GABA_A"]].sum())
+        arr_ok = (abs(arrivals[0.5] - arrivals[1.0] * 0.5)
+                  <= max(1e-6, abs(arrivals[1.0] * 0.5) * 1e-6)
+                  and arrivals[0.0] == 0.0)
+        passed = (prop_ok and exc_ok and arr_ok
+                  and tensor_hash(m.synapses.w0_nS) == w0_hash)
+        return CheckResult(
+            "check_50_inhibition_synthetic_emission",
+            "고정 스파이크에서 억제 q 와 GABA 도착 증가분만 alpha 에 비례",
+            STATUS_PASSED if passed else STATUS_FAILED,
+            "억제 q 합 = alpha x (alpha=1 일 때의 값), 흥분 q 합은 불변, "
+            "GABA_A 도착 합도 같은 비례, w0 해시 불변",
+            {"q_by_alpha": rows, "inhibitory_proportional": prop_ok,
+             "excitatory_unchanged": exc_ok,
+             "gaba_arrival_by_alpha": arrivals,
+             "arrival_proportional": arr_ok,
+             "w0_unchanged": tensor_hash(m.synapses.w0_nS) == w0_hash},
+            "tiny preset, 합성 스파이크로 발신/도착 직접 계산",
+            {"scope_note_ko": ("발신량과 도착 증가분만 검사한다. 전체 네트워크 "
+                               "출력이 선형 비례한다고 요구하지 않는다.")})
+
+    def check_51_inhibition_alpha_zero_boundary(self) -> CheckResult:
+        """검사 3 — ``alpha=0`` 경계: 억제 도착량이 정확히 0, 흥분 경로는 살아 있다.
+
+        **fresh state** 에서 검사한다. 이전부터 남은 전도도와 새 도착량을
+        구분해야 하므로 상태를 완전히 지우고 시작한다.
+        """
+        t = require_torch()
+        m = self._fresh_model()
+        m.prepare(1, 1)
+        m.reset_dynamics()
+        n = m.neurons.n
+        inh = (m.neurons.dale < 0)
+        m.set_inhibition_gain(0.0, reason="check_51")
+        P = m.gains.replicas(None)
+        s_f = t.ones((1, 1, n), dtype=self.dtype, device=self.device)
+        q = m.engine.inhibition.apply_to_emission(P.unsqueeze(1) * s_f)
+        inhibitory_q = float(q[0, 0][inh].sum())
+        # fresh state 의 잔류 전도도 확인
+        residual = float(m.state.g.sum())
+        m.ring.write(0, q)
+        delay = min(d for d, _ in m.synapses.delay_groups)
+        dg = m.engine._gather_arrivals(m.ring, delay, 1, 1)
+        gaba_new = float(dg[..., RECEPTOR_INDEX["GABA_A"]].sum())
+        exc_new = float(dg[..., RECEPTOR_INDEX["AMPA"]].sum()
+                        + dg[..., RECEPTOR_INDEX["NMDA"]].sum())
+        # 억제성 세포 자체는 여전히 발화할 수 있어야 한다 (삭제하지 않았다)
+        cells_alive = int(inh.sum()) > 0
+        spikes_possible = bool((m.neurons.theta_base[inh] > 0).all())
+        passed = (inhibitory_q == 0.0 and gaba_new == 0.0 and exc_new > 0.0
+                  and residual == 0.0 and cells_alive and spikes_possible)
+        return CheckResult(
+            "check_51_inhibition_alpha_zero_boundary",
+            "alpha=0 에서 억제 도착량 정확히 0, 흥분 경로는 살아 있음",
+            STATUS_PASSED if passed else STATUS_FAILED,
+            "fresh state 에서 잔류 전도도 0, 억제 q 합 0, 새 GABA_A 도착 0, "
+            "흥분 도착 > 0, 억제성 세포는 그대로 존재",
+            {"inhibitory_q_sum": inhibitory_q,
+             "residual_conductance_before": residual,
+             "new_gaba_arrival": gaba_new, "new_excitatory_arrival": exc_new,
+             "n_inhibitory_cells": int(inh.sum()),
+             "inhibitory_cells_not_deleted": cells_alive,
+             "inhibitory_thresholds_intact": spikes_possible},
+            "tiny preset, fresh state 에서 직접 계산",
+            {"note_ko": ("배율 0 은 전달 효과만 끈 경계 조건이다. 세포를 삭제하거나 "
+                         "발화를 강제로 0 으로 만들지 않는다.")})
+
+    def check_52_inhibition_delay_timing(self) -> CheckResult:
+        """검사 4 — 지연 시점: 배율을 바꾸기 전에 발신한 신호는 **발신 당시** 배율로 도착.
+
+        지연 중인 신호를 새 배율로 소급 변경하지 않는다. 엔진이 ring 에 넣은 q 와
+        EventCapture 가 읽는 amount 가 일치해야 한다.
+        """
+        t = require_torch()
+        m = self._fresh_model()
+        m.prepare(1, 1)
+        m.reset_dynamics()
+        n = m.neurons.n
+        inh = (m.neurons.dale < 0)
+        P = m.gains.replicas(None)
+        s_f = t.ones((1, 1, n), dtype=self.dtype, device=self.device)
+        # 1) 배율 1.0 으로 발신해 ring 에 넣는다
+        m.set_inhibition_gain(1.0, reason="check_52 emit")
+        q_old = m.engine.inhibition.apply_to_emission(P.unsqueeze(1) * s_f)
+        m.ring.write(0, q_old)
+        m.engine.emit_gain_log[0] = m.engine.inhibition.gain
+        emitted_at_one = float(q_old[0, 0][inh].sum())
+        # 2) 도착 전에 배율을 0.1 로 바꾼다
+        m.set_inhibition_gain(0.1, reason="check_52 change before arrival")
+        delay = min(d for d, _ in m.synapses.delay_groups)
+        dg = m.engine._gather_arrivals(m.ring, delay, 1, 1)
+        gaba_arrived = float(dg[..., RECEPTOR_INDEX["GABA_A"]].sum())
+        # 3) 같은 신호를 배율 0.1 로 새로 발신했다면 얼마였을지
+        q_new = m.engine.inhibition.apply_to_emission(P.unsqueeze(1) * s_f)
+        m.reset_dynamics()
+        m.ring.write(0, q_new)
+        dg2 = m.engine._gather_arrivals(m.ring, delay, 1, 1)
+        gaba_if_new = float(dg2[..., RECEPTOR_INDEX["GABA_A"]].sum())
+        not_retroactive = gaba_arrived > gaba_if_new * 1.5 if gaba_if_new > 0 \
+            else gaba_arrived > 0
+        logged = m.engine.gain_at_emit(0)
+        log_ok = (logged == 1.0)
+        # ring 안의 q 를 그대로 읽는지 (EventCapture 가 쓰는 경로와 같은 식)
+        ring_q = m.ring.read(delay, delay)
+        capture_matches = ring_q is not None and bool(
+            t.equal(ring_q, q_new))
+        passed = not_retroactive and log_ok and capture_matches
+        return CheckResult(
+            "check_52_inhibition_delay_timing",
+            "지연 중인 신호는 발신 당시 배율을 유지한다 (소급 변경 없음)",
+            STATUS_PASSED if passed else STATUS_FAILED,
+            "배율 1.0 으로 발신한 뒤 0.1 로 바꿔도 도착량은 1.0 기준이고, "
+            "emit_gain_log 가 발신 당시 값을 돌려주며, EventCapture 가 읽는 "
+            "ring 의 q 가 엔진이 쓴 값과 같다",
+            {"emitted_q_at_alpha_1": emitted_at_one,
+             "arrived_after_changing_to_0.1": gaba_arrived,
+             "would_be_if_emitted_at_0.1": gaba_if_new,
+             "not_retroactively_scaled": not_retroactive,
+             "logged_emit_gain": logged, "log_matches_emission": log_ok,
+             "capture_reads_engine_q": capture_matches},
+            "tiny preset, ring 직접 조작")
+
+    def check_53_inhibition_both_arrival_paths(self) -> CheckResult:
+        """검사 5 — 두 합산 경로 대조 (index_add vs 결정론 segment-sum).
+
+        중복 표적, 빈 edge 묶음, chunk 경계, replica/batch 차원을 포함해 본다.
+        """
+        t = require_torch()
+        results: dict[str, Any] = {}
+        worst = 0.0
+        for alpha in (1.0, 0.25, 0.0):
+            for chunk in (1, 7, 10 ** 9):          # chunk 경계 포함
+                cfg_f = json.loads(json.dumps(self.tiny_cfg))
+                cfg_f["deterministic"] = False
+                cfg_f["limits"]["edge_chunk"] = int(chunk)
+                cfg_d = json.loads(json.dumps(cfg_f))
+                cfg_d["deterministic"] = True
+                mf = self._fresh_model(cfg_f)
+                md = self._fresh_model(cfg_d)
+                n = mf.neurons.n
+                for m in (mf, md):
+                    m.set_inhibition_gain(alpha, reason="check_53")
+                    m.prepare(2, 3)                 # replica=2, batch=3
+                    m.reset_dynamics()
+                gen = np.random.default_rng(7)
+                q_np = gen.random((2, 3, n))
+                qf = t.tensor(q_np, dtype=self.dtype, device=self.device)
+                delay = min(d for d, _ in mf.synapses.delay_groups)
+                mf.ring.write(0, qf)
+                md.ring.write(0, qf)
+                a1 = mf.engine._gather_arrivals(mf.ring, delay, 2, 3)
+                a2 = md.engine._gather_arrivals(md.ring, delay, 2, 3)
+                diff = float((a1 - a2).abs().max())
+                denom = max(float(a1.abs().max()), 1e-12)
+                worst = max(worst, diff / denom)
+                results[f"alpha{alpha}_chunk{chunk}"] = {
+                    "max_abs_diff": diff, "relative": diff / denom,
+                    "total": float(a1.sum())}
+        # 빈 edge 묶음: 아무 것도 발신하지 않은 스텝
+        mf = self._fresh_model()
+        mf.prepare(1, 1)
+        mf.reset_dynamics()
+        empty = mf.engine._gather_arrivals(mf.ring, 0, 1, 1)
+        empty_ok = float(empty.abs().sum()) == 0.0
+        passed = worst <= 1e-6 and empty_ok
+        return CheckResult(
+            "check_53_inhibition_both_arrival_paths",
+            "두 도착 합산 경로가 같은 q 에서 같은 결과를 낸다",
+            STATUS_PASSED if passed else STATUS_FAILED,
+            "index_add 경로와 결정론 segment-sum 경로의 상대 오차 <= 1e-6 "
+            "(중복 표적·chunk 경계·replica/batch·빈 묶음 포함)",
+            {"cases": results, "worst_relative_difference": worst,
+             "empty_group_is_zero": empty_ok},
+            "tiny preset, 무작위 q 를 두 경로에 직접 투입")
+
+    def check_54_inhibition_schedule(self) -> CheckResult:
+        """검사 6 — 스케줄: 경계, 단조 증가, 마지막 값, 최소 설정, 잘못된 매개변수."""
+        s = InhibitionSchedule(start=0.01, end=1.0, warmup_epochs=5,
+                               ramp_epochs=20, hold_epochs=5, kind="cosine")
+        vals = [s.alpha_at(e) for e in range(s.total_epochs)]
+        obs: dict[str, Any] = {
+            "total_epochs": s.total_epochs,
+            "warmup_constant": all(abs(v - 0.01) < 1e-12 for v in vals[:5]),
+            "stage_boundaries": [s.stage_at(4), s.stage_at(5),
+                                 s.stage_at(24), s.stage_at(25)],
+            "monotonic_nondecreasing": all(vals[i] <= vals[i + 1] + 1e-12
+                                           for i in range(len(vals) - 1)),
+            "last_equals_end": vals[-1] == 1.0,
+            "ramp_last_equals_end": abs(s.alpha_at(24) - 1.0) < 1e-12,
+            "never_exceeds_end": max(vals) <= 1.0,
+            "never_below_start": min(vals) >= 0.01,
+        }
+        obs["boundaries_correct"] = obs["stage_boundaries"] == [
+            "warmup", "ramp", "ramp", "hold"]
+        lin = InhibitionSchedule(kind="linear")
+        lv = [lin.alpha_at(e) for e in range(lin.total_epochs)]
+        obs["linear_monotonic"] = all(lv[i] <= lv[i + 1] + 1e-12
+                                      for i in range(len(lv) - 1))
+        obs["linear_last_equals_end"] = lv[-1] == 1.0
+        mini = InhibitionSchedule(start=0.5, end=0.5, warmup_epochs=0,
+                                  ramp_epochs=1, hold_epochs=0)
+        obs["minimal_schedule_total"] = mini.total_epochs
+        obs["minimal_schedule_value"] = mini.alpha_at(0)
+        bad_cases = {}
+        for kw, name in (({"ramp_epochs": 0}, "ramp<1"),
+                         ({"start": 0.9, "end": 0.1}, "start>end"),
+                         ({"end": 1.5}, "end>1"),
+                         ({"warmup_epochs": -1}, "warmup<0"),
+                         ({"kind": "zigzag"}, "unknown_kind"),
+                         ({"start": float("nan")}, "nan")):
+            try:
+                InhibitionSchedule(**kw)
+                bad_cases[name] = False
+            except ValueError:
+                bad_cases[name] = True
+        obs["invalid_rejected"] = bad_cases
+        # 재개 후 일정 일치: 같은 설정에서 같은 표가 나오는가
+        again = InhibitionSchedule(start=0.01, end=1.0, warmup_epochs=5,
+                                   ramp_epochs=20, hold_epochs=5, kind="cosine")
+        obs["resume_table_matches"] = again.table() == s.table()
+        # immediate 조건의 총 에폭 수가 base 와 같은가 (계산량 일치)
+        imm = InhibitionSchedule.immediate(s)
+        obs["immediate_total_matches_base"] = imm.total_epochs == s.total_epochs
+        obs["immediate_starts_at_end"] = imm.alpha_at(0) == s.end
+        passed = (obs["warmup_constant"] and obs["boundaries_correct"]
+                  and obs["monotonic_nondecreasing"] and obs["last_equals_end"]
+                  and obs["ramp_last_equals_end"] and obs["never_exceeds_end"]
+                  and obs["linear_monotonic"] and obs["linear_last_equals_end"]
+                  and all(bad_cases.values()) and obs["resume_table_matches"]
+                  and obs["immediate_total_matches_base"]
+                  and obs["immediate_starts_at_end"])
+        return CheckResult(
+            "check_54_inhibition_schedule",
+            "억제 스케줄의 경계·단조성·마지막 값·잘못된 매개변수 거부",
+            STATUS_PASSED if passed else STATUS_FAILED,
+            "warmup 은 start 고정, ramp 마지막이 정확히 end, 단조 증가, end 초과 "
+            "없음, 잘못된 매개변수는 모두 거부, 같은 설정은 같은 표",
+            obs, "InhibitionSchedule 직접 호출 (모델 없음)")
+
+    def check_55_inhibition_zero_teacher(self) -> CheckResult:
+        """검사 7 — 교사 0: 같은 배율·초기 상태에서 교사 유래 theta 갱신이 정확히 0.
+
+        epoch 경계의 alpha 변경에 따른 감각 활동 변화는 **교사 누설로 계산하지
+        않는다**. 여기서는 배율을 고정한 채 교사만 끈다.
+        """
+        t = require_torch()
+        cfg = self._tl_cfg()
+        l5 = L5ErrorLocalizer(cfg, self.device, self.dtype)
+        l6 = L6ErrorSignEstimator(cfg, self.device, self.dtype)
+        l1 = L1FeedbackReceiver(cfg, self.device, self.dtype)
+        a = t.tensor([[[0.9, 0.1, 0.5]]], dtype=self.dtype, device=self.device)
+        tg = t.tensor([[[0.1, 0.9, 0.5]]], dtype=self.dtype, device=self.device)
+        loc = l5.localize(a, tg)
+        est = l6.estimate(a, tg, loc["selection_mask"])
+        pkt = CorrectionPacket("A", 0, 0, tg, loc["selection_mask"],
+                               est["excess"], est["deficit"],
+                               est["signed_error"], est["confidence"])
+        pkt = l1.receive(pkt, 0)
+        ones = t.ones((1, 1, 1), dtype=self.dtype, device=self.device)
+        d_on = l1.correction_drive(pkt, gate=ones, attention=t.ones_like(a),
+                                   error_scale=0.1, kappa=0.5)
+        d_off = l1.correction_drive(pkt, gate=t.zeros_like(ones),
+                                    attention=t.ones_like(a),
+                                    error_scale=0.1, kappa=0.5)
+        # commit 도 정확히 0 인지
+        m = self._fresh_model()
+        ctrl = ThresholdController(cfg, m.neurons, self.device, self.dtype)
+        base0 = m.neurons.theta_base.clone()
+        zero_fast = t.zeros((1, 1, m.neurons.n), dtype=self.dtype,
+                            device=self.device)
+        rec = ctrl.commit(zero_fast, 0.1)
+        theta_unchanged = bool(t.equal(base0, m.neurons.theta_base))
+        # 배율만 바뀐 경우는 교사 누설이 아니라는 사실을 함께 기록한다
+        m2 = self._fresh_model()
+        before_theta = tensor_hash(m2.neurons.theta_base)
+        m2.set_inhibition_gain(0.1, reason="check_55 alpha change only")
+        alpha_change_no_theta = tensor_hash(m2.neurons.theta_base) == before_theta
+        passed = (float(d_on.abs().max()) > 0.0
+                  and float(d_off.abs().max()) == 0.0
+                  and theta_unchanged and alpha_change_no_theta)
+        return CheckResult(
+            "check_55_inhibition_zero_teacher",
+            "교사 gate 0 이면 theta 갱신이 정확히 0 (배율 변경은 교사 누설이 아니다)",
+            STATUS_PASSED if passed else STATUS_FAILED,
+            "gate=1 이면 delta != 0, gate=0 이면 delta == 0, theta_fast=0 으로 "
+            "commit 해도 theta_base 불변, 배율만 바꾸면 theta_base 불변",
+            {"delta_with_teacher": float(d_on.abs().max()),
+             "delta_zero_teacher": float(d_off.abs().max()),
+             "theta_base_unchanged_on_zero_commit": theta_unchanged,
+             "commit_actual_norm": rec.get("actual_norm"),
+             "alpha_change_does_not_touch_theta": alpha_change_no_theta},
+            "L5/L6/L1 + ThresholdController + 배율 변경 직접 호출",
+            {"note_ko": ("epoch 경계의 alpha 변경으로 감각 활동이 달라지는 것은 "
+                         "교사 누설이 아니다. 여기서는 배율을 고정한 채 교사만 "
+                         "끈 경우를 본다.")})
+
+    def check_56_inhibition_diagnostic_purity(self) -> CheckResult:
+        """검사 8 — 진단 무부작용: 진단 전후 학습 상태와 RNG 가 보존된다."""
+        require_torch()
+        m = self._fresh_model()
+        m.prepare(1, 1)
+        m.set_inhibition_gain(0.25, reason="check_56")
+        before = diagnostic_state_signature(m)
+        before_gain = m.inhibition_gain
+        stim = self._tiny_stim("shape")
+        n_steps = int(round(self.tiny_cfg["engine"]["sample_ms"]
+                            / self.tiny_cfg["engine"]["dt_ms"]))
+        # 진단 탐침은 동역학을 쓰므로 복제본에서 측정한다
+        probe_model = self._fresh_model()
+        probe_model.set_inhibition_gain(0.25, reason="check_56 replica")
+        self._prepared(probe_model, stim, 4)
+        gen = StimulusGenerator(self.tiny_cfg,
+                                SeedStreams(int(self.tiny_cfg["seed"])))
+        bundle = build_inhibition_diagnostic_bundle(
+            gen.classification_set()[:3], gen.diagnostic_set())
+        probe = inhibition_probe(probe_model, bundle["stimuli"], 4)
+        _ = judge_inhibition_probe(probe, self.tiny_cfg["inhibition"]["criteria"])
+        after = diagnostic_state_signature(m)
+        same = {k: (before[k] == after[k]) for k in before
+                if k not in ("dynamic", "ring", "engine_counters")}
+        gain_ok = m.inhibition_gain == before_gain
+        # 탐침이 복제본의 고정 파라미터도 바꾸지 않았는지
+        replica_fixed = probe_model.verify_fixed_unchanged()
+        passed = all(same.values()) and gain_ok and replica_fixed["unchanged"]
+        del n_steps
+        return CheckResult(
+            "check_56_inhibition_diagnostic_purity",
+            "억제 진단이 theta/P/w0/준비 산출물/RNG 를 바꾸지 않는다",
+            STATUS_PASSED if passed else STATUS_FAILED,
+            "진단 전후 고정 텐서·theta_base·z·P·encoder·RNG 해시가 같고 배율도 "
+            "그대로이며, 복제본의 고정 파라미터도 불변",
+            {"unchanged": same, "gain_preserved": gain_ok,
+             "replica_fixed_unchanged": replica_fixed,
+             "measured_on_replica": True,
+             "n_stimuli_probed": len(bundle["stimuli"])},
+            "tiny preset, 복제본에서 inhibition_probe 실행")
+
+    def check_57_inhibition_no_eval_leak(self) -> CheckResult:
+        """검사 10 — 평가 누출: predict 에 정답이 들어가지 않고 평가 중 commit 이 없다."""
+        import inspect
+        sig = inspect.signature(RecurrentCortexNetwork.predict)
+        params = [p for p in sig.parameters if p != "self"]
+        banned = {"y", "labels", "label", "clean_target", "corruption_mask",
+                  "erase_mask", "add_mask", "target", "teacher_targets",
+                  "inhibition_gain"}
+        src_predict = inspect.getsource(RecurrentCortexNetwork.predict)
+        src_eval = inspect.getsource(ExperimentRunner.evaluate_free)
+        src_prep = inspect.getsource(ExperimentRunner.prepare_readouts)
+        src_free = inspect.getsource(ExperimentRunner._free_features_for_drift)
+        obs = {
+            "predict_parameters": params,
+            "no_banned_parameter_names": not (set(params) & banned),
+            "predict_rejects_answer_context": "정답성 항목" in src_predict,
+            "predict_has_no_commit": ".commit(" not in src_predict,
+            "evaluate_free_has_no_commit": ".commit(" not in src_eval,
+            "evaluate_free_uses_predict": ".predict(" in src_eval,
+            "preparation_uses_train_only": '"train"' in src_prep,
+            "preparation_not_test": '"test"' not in src_prep,
+            "drift_probe_drops_labels": "del _labels" in src_free,
+            "drift_probe_has_no_commit": ".commit(" not in src_free,
+        }
+        # 정규화·선택 경로가 test 를 쓰지 않는지
+        src_norm = inspect.getsource(ExperimentRunner.fit_normalization)
+        obs["normalization_uses_train_only"] = ('"train"' in src_norm
+                                                and '"test"' not in src_norm)
+        passed = all(v for k, v in obs.items() if k != "predict_parameters")
+        return CheckResult(
+            "check_57_inhibition_no_eval_leak",
+            "평가 누출 없음: predict 에 정답 없음, 평가 중 commit 없음, test 미사용",
+            STATUS_PASSED if passed else STATUS_FAILED,
+            "predict(image_or_sequence, context) 에 금지 인자가 없고, 평가·준비·"
+            "정규화·표류 측정 경로에 commit 이나 test 접근이 없다",
+            obs, "소스 서명·본문 검사 (inspect)")
+
+    def check_58_inhibition_structure_frozen(self) -> CheckResult:
+        """검사 11 — 고정 구조: 억제 스케줄 실행 전후 배선·w0·지연·P·임계값 해시 비교."""
+        t = require_torch()
+        m = self._fresh_model()
+        m.prepare(1, 1)
+        before = {
+            "fixed": dict(m.fixed_hashes),
+            "w0": tensor_hash(m.synapses.w0_nS),
+            "delay": tensor_hash(m.synapses.delay_steps)
+            if hasattr(m.synapses, "delay_steps") else None,
+            "src": tensor_hash(m.synapses.src),
+            "dst": tensor_hash(m.synapses.dst),
+            "z": tensor_hash(m.gains.z),
+            "theta_base": tensor_hash(m.neurons.theta_base),
+            "theta_trainable": tensor_hash(
+                m.neurons.theta_trainable.to(self.dtype)),
+            "dale": tensor_hash(m.neurons.dale.to(self.dtype)),
+        }
+        stim = self._tiny_stim("shape")
+        sched = InhibitionSchedule(start=0.01, end=1.0, warmup_epochs=1,
+                                   ramp_epochs=2, hold_epochs=1)
+        # 스케줄 전체를 돌며 배율을 바꾸고 실행한다 (학습은 하지 않는다)
+        for epoch in range(sched.total_epochs):
+            m.set_inhibition_gain(sched.alpha_at(epoch), reason=f"epoch {epoch}")
+            m.reset_dynamics()
+            drive, _ = self._prepared(m, stim, 4)
+            m.run(drive, m.gains.replicas(None), 4)
+        after = {
+            "fixed": dict(m._compute_fixed_hashes()),
+            "w0": tensor_hash(m.synapses.w0_nS),
+            "delay": tensor_hash(m.synapses.delay_steps)
+            if hasattr(m.synapses, "delay_steps") else None,
+            "src": tensor_hash(m.synapses.src),
+            "dst": tensor_hash(m.synapses.dst),
+            "z": tensor_hash(m.gains.z),
+            "theta_base": tensor_hash(m.neurons.theta_base),
+            "theta_trainable": tensor_hash(
+                m.neurons.theta_trainable.to(self.dtype)),
+            "dale": tensor_hash(m.neurons.dale.to(self.dtype)),
+        }
+        same = {k: (before[k] == after[k]) for k in before}
+        # w0 는 비음수 유지
+        nonneg = bool((m.synapses.w0_nS >= 0).all())
+        # 역전위도 그대로
+        erev_ok = bool(t.equal(
+            m.engine.E_rev,
+            t.tensor([float(RECEPTOR_PARAMS[r]["E_rev_mV"]) for r in RECEPTORS],
+                     dtype=self.dtype, device=self.device)))
+        passed = all(same.values()) and nonneg and erev_ok
+        return CheckResult(
+            "check_58_inhibition_structure_frozen",
+            "억제 스케줄 실행 전후 배선·w0·지연·P·임계값이 모두 불변",
+            STATUS_PASSED if passed else STATUS_FAILED,
+            "스케줄 전 구간을 실행해도 고정 해시가 하나도 바뀌지 않고, w0 는 "
+            "비음수이며 역전위도 그대로다",
+            {"unchanged": same, "w0_nonnegative": nonneg,
+             "reversal_potentials_unchanged": erev_ok,
+             "epochs_run": sched.total_epochs,
+             "gain_history": m.inhibition.history[-4:]},
+            "tiny preset, 스케줄 전 구간 실행 (학습 없음)")
+
+    def check_59_inhibition_resume(self) -> CheckResult:
+        """검사 9 — 저장·재개: 억제 체크포인트가 alpha·다음 배치·학습 상태를 담는다.
+
+        짧은 합성 기록으로 **형식과 내용**을 확인한다. 실제 중단/재개 학습은
+        사용자가 실행한다 (여기서 학습을 돌리지 않는다). 이 검사는 모형을 만들지
+        않으므로 torch 없이도 실행된다.
+        """
+        tmp = Path(tempfile.mkdtemp(prefix="vcg_inh_resume_"))
+        obs: dict[str, Any] = {}
+        try:
+            sched = InhibitionSchedule(start=0.01, end=1.0, warmup_epochs=1,
+                                       ramp_epochs=2, hold_epochs=1)
+            meta = {
+                "format": "visual_cortex_gpu.inhibition_checkpoint.v1",
+                "base_source": {"name": BASE_SOURCE_NAME,
+                                "version": BASE_SOURCE_VERSION,
+                                "sha256": BASE_SOURCE_SHA256},
+                "experiment": "inhibition-train", "condition": "ramp_local",
+                "schedule": sched.to_dict(),
+                "epoch": 2, "next_batch_index": 3, "stage": sched.stage_at(2),
+                "planned_alpha": sched.alpha_at(2),
+                "current_inhibition_gain": sched.alpha_at(2),
+                "force_zero_teacher": False,
+                "preparation_file": "checkpoints/preparation_state.json",
+                "preparation_signatures": {"classifier": "abc"},
+                "rng": {"master_seed": 1, "numpy": {}},
+                "test_access": {"n_test_evaluations": 0, "events": []},
+                "resume_unit": "completed_minibatch",
+                "eval_gain": None,
+            }
+            tensors = {"theta_base": np.full(5, 10.0),
+                       "order": np.arange(4, dtype=np.int64)}
+            mgr = CheckpointManager(tmp)
+            path = mgr.save("e002_b00003", meta=meta, tensors=tensors)
+            back, tback = mgr.load(path)
+            required = ["format", "experiment", "condition", "schedule", "epoch",
+                        "next_batch_index", "stage", "planned_alpha",
+                        "current_inhibition_gain", "force_zero_teacher",
+                        "preparation_file", "preparation_signatures", "rng",
+                        "test_access", "resume_unit", "eval_gain", "base_source"]
+            obs["all_required_fields_saved"] = all(k in back for k in required)
+            obs["missing_fields"] = [k for k in required if k not in back]
+            obs["alpha_roundtrip"] = (back["current_inhibition_gain"]
+                                      == meta["current_inhibition_gain"])
+            obs["next_batch_roundtrip"] = back["next_batch_index"] == 3
+            obs["schedule_roundtrip"] = back["schedule"] == sched.to_dict()
+            obs["theta_roundtrip"] = bool(
+                np.array_equal(tback["theta_base"], tensors["theta_base"]))
+            obs["order_roundtrip"] = bool(
+                np.array_equal(tback["order"], tensors["order"]))
+            obs["resume_unit_is_completed_minibatch"] = (
+                back["resume_unit"] == "completed_minibatch")
+            obs["format_distinct_from_threshold"] = (
+                back["format"] != "visual_cortex_gpu.threshold_checkpoint.v1")
+            again = InhibitionSchedule(
+                start=back["schedule"]["start"], end=back["schedule"]["end"],
+                warmup_epochs=back["schedule"]["warmup_epochs"],
+                ramp_epochs=back["schedule"]["ramp_epochs"],
+                hold_epochs=back["schedule"]["hold_epochs"],
+                kind=back["schedule"]["kind"])
+            obs["schedule_matches_after_resume"] = again.table() == sched.table()
+            obs["alpha_at_saved_epoch_matches"] = (
+                again.alpha_at(back["epoch"]) == back["planned_alpha"])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+        passed = all(bool(v) for k, v in obs.items() if k != "missing_fields")
+        return CheckResult(
+            "check_59_inhibition_resume",
+            "억제 체크포인트가 alpha·일정·다음 배치·학습 상태를 담고 왕복한다",
+            STATUS_PASSED if passed else STATUS_FAILED,
+            "필수 항목이 모두 저장되고 값이 그대로 돌아오며, 일반 학습 체크포인트와 "
+            "형식이 구분되고, 재개 후 일정이 일치한다",
+            obs, "임시 폴더에 만든 합성 체크포인트 (학습 없음)",
+            {"scope_note_ko": ("형식과 내용만 검사한다. 실제 중단/재개 학습의 "
+                               "결과 일치는 사용자가 실행해야 확인된다.")})
+
     def _tl_cfg(self, **over: Any) -> dict[str, Any]:
         """검사용 tiny 설정 사본. 원본을 건드리지 않는다."""
         c = json.loads(json.dumps(self.tiny_cfg))
@@ -11630,40 +14761,40 @@ class ValidationSuite:
                          "이 검사는 commit 자체의 중복 누적을 본다.")})
 
     def check_37_measurement_purity(self) -> CheckResult:
-        """측정 함수 실행 전후 live model / decoder / theta / RNG 상태가 보존된다."""
         require_torch()
         m = self._fresh_model()
-        seeds = SeedStreams(int(self.tiny_cfg["seed"]))
-        before = {
-            "fixed": dict(m.fixed_hashes),
-            "theta_base": tensor_hash(m.neurons.theta_base),
-            "z": tensor_hash(m.gains.z),
-            "rng": sha256_text(dumps(seeds.state_dict())),
-        }
+        self._fit_train_normalization(m)
         stim = self._tiny_stim("grating")
-        _ = transmission_diagnostic(m, stim, 8)
+        drive, _ = self._prepared(m, stim, 8)
+        m.run(drive, m.gains.replicas(None), 8)
+        m.state.theta_fast.fill_(0.25)
+        m.state.theta_eff.copy_(m.neurons.theta_base.view(1, 1, -1) + m.state.theta_fast)
+        # 한 가지 미래 상태도 보존하는지 검사한다. 새 RNG 객체의 해시를 비교하지 않는다.
+        m.seeds.numpy("measurement", 27).random()
+        before = diagnostic_state_signature(m)
+        _ = transmission_diagnostic(m, stim, 4)
         _ = m.memory_estimate(1, 2)
-        _ = m.neuron_view(int(m.decoder.neuron_ids[0]), run_id="purity")
-        ref = RateReferenceEngine(n_layers=2, width=4, n_passes=2)
-        _ = ref.gradient_check(steps=(1e-3,))
-        after = {
-            "fixed": dict(m._compute_fixed_hashes()),
-            "theta_base": tensor_hash(m.neurons.theta_base),
-            "z": tensor_hash(m.gains.z),
-            "rng": sha256_text(dumps(seeds.state_dict())),
-        }
-        same = {k: (before[k] == after[k]) for k in before}
-        passed = all(same.values())
+        _ = m.neuron_view(int(m.decoder.neuron_ids[0]), run_id="purity").to_dict()
+        after = diagnostic_state_signature(m)
+        unchanged = {k: before[k] == after[k] for k in before}
+        saved_scale = m.encoder.scale
+        m.encoder.scale = None
+        error_before = diagnostic_state_signature(m)
+        expected_error = False
+        try:
+            transmission_diagnostic(m, stim, 4)
+        except RuntimeError as exc:
+            expected_error = "정규화" in str(exc)
+        error_after = diagnostic_state_signature(m)
+        m.encoder.scale = saved_scale
+        error_pure = error_before == error_after
+        passed = all(unchanged.values()) and expected_error and error_pure
         return CheckResult(
-            "check_37_measurement_purity",
-            "측정·진단 실행이 live 상태(고정 텐서/theta/z/RNG)를 바꾸지 않는다",
+            "check_37_measurement_purity", "진단 성공/예외 시 실제 모델 동적 상태 보존",
             STATUS_PASSED if passed else STATUS_FAILED,
-            "진단 전후 모든 해시가 같다",
-            {"unchanged": same,
-             "checked": sorted(before),
-             "measured_functions": ["transmission_diagnostic", "memory_estimate",
-                                    "neuron_view", "RateReferenceEngine"]},
-            "tiny preset 실제 진단 호출")
+            "막전위/전도도/불응/발화/임시 임계값/ring/P/정규화/실제 RNG/카운터 모두 보존",
+            {"unchanged": unchanged, "expected_error": expected_error,
+             "exception_path_preserved": error_pure}, "tiny 모델, 실제 살아 있는 상태의 전후 해시")
 
     def check_38_predict_api_has_no_labels(self) -> CheckResult:
         """``predict`` 에 y / clean_target / corruption_mask 를 넘길 수 없다."""
@@ -11769,15 +14900,19 @@ class ValidationSuite:
                          "paired_loss_change": l_up - l_dn,
                          "zero_difference": (l_up - l_dn) == 0.0,
                          "spikes_plus": int(up["spike_count"].sum()),
-                         "spikes_minus": int(dn["spike_count"].sum())})
+                         "spikes_minus": int(dn["spike_count"].sum()),
+                         "readout_rate_difference": float((up["rates"] - dn["rates"]).abs().max()),
+                         "readout_nonzero_plus": int((up["rates"] > 0).sum()),
+                         "readout_nonzero_minus": int((dn["rates"] > 0).sum()),
+                         "logit_difference": float((up["logits"] - dn["logits"]).abs().max())})
         m.neurons.theta_base = base0
         n_zero = sum(1 for r in rows if r["zero_difference"])
         return CheckResult(
             "check_41_finite_threshold_perturbation",
             "유한 크기 임계값 섭동의 paired 손실 변화 (기준 없음, 측정만)",
             STATUS_MEASURED,
-            "기준을 두지 않는다. 작은 섭동에서 차이가 0 인 것은 불연속 때문이며 "
-            "기울기가 0 이라는 뜻이 아니다",
+            "기준을 두지 않는다. 손실 차이 0은 불연속/포화/무신호/해독기 중 여러 "
+            "원인이 가능하다. 발화·특징·로짓의 변화를 함께 읽는다",
             {"sweep": rows, "n_zero_difference": n_zero,
              "n_steps_tested": len(rows)},
             "tiny preset 실제 엔진 paired 실행",
@@ -11822,76 +14957,82 @@ class ValidationSuite:
                            "도달하지 못하는 신호 전달 실패일 수도 있으므로 "
                            "check_14 전달 진단과 함께 읽어야 한다.")})
 
-    def check_46_insufficient_signal_is_explained(self) -> CheckResult:
-        """준비 단계에서 멈춘 실행의 보고서가 **이유와 수치**를 보여 주는지.
-
-        학습 루프를 돌지 않았으면 학습 수치를 0 으로 채우지 않고, 어떤 영역에서
-        신호가 끊겼는지 근거 숫자와 함께 적어야 한다.
-        """
-        prep = {
-            "status": STATUS_INSUFFICIENT_SIGNAL,
-            "it_variability": {"between_sample_variance": 0.0,
-                               "active_fraction": 0.0,
-                               "max_abs_difference_to_first": 0.0,
-                               "n_prep_samples": 56,
-                               "status": STATUS_INSUFFICIENT_SIGNAL},
-            "rate_scale": {"percentile": 95.0, "areas": {
-                "V1": {"rate_scale_hz": 12.5, "n_positive": 340, "status": "ok"},
-                "IT": {"rate_scale_hz": 1.0, "n_positive": 0,
-                       "status": STATUS_INSUFFICIENT_SIGNAL}}},
-        }
-        diag = ExperimentRunner._signal_diagnosis(prep)
-        obs: dict[str, Any] = {
-            "named_silent_areas": (diag["candidate_causes"][0]
-                                   .get("areas_with_no_positive_firing") == ["IT"]),
-            "named_living_areas": (diag["candidate_causes"][0]
-                                   .get("areas_with_firing") == ["V1"]),
-            "does_not_assert_single_cause": bool(diag.get("single_cause_note_ko")),
-        }
-        tmp = Path(tempfile.mkdtemp(prefix="vcg_insuf_"))
-        try:
-            write_json(tmp / "train.json", {
-                "mode": "frozen_threshold", "status": STATUS_INSUFFICIENT_SIGNAL,
-                "stopped_at": "readout_preparation", "preparation": prep,
-                "diagnosis": diag, "reason_ko": "신호가 오지 않아 시작하지 않았다.",
-                "not_run_ko": "학습 곡선이 없다."})
-            write_json(tmp / "manifest.json", {
-                "run_id": "insuf", "status": STATUS_INSUFFICIENT_SIGNAL,
-                "learning": {"mode": "frozen_threshold",
-                             "trainable": ["theta_base"]},
-                "code": {"sha256": "abc"}, "config_sha256": "def",
-                "environment": {}, "device": str(self.device),
-                "dtype": str(self.dtype),
-                "deterministic": {"status": "n/a", "note_ko": ""}})
-            text = ReportBuilder(tmp).build().read_text(encoding="utf-8")
-            obs["report_states_insufficient"] = (
-                STATUS_UPPER[STATUS_INSUFFICIENT_SIGNAL] in text)
-            obs["report_names_stop_point"] = "readout_preparation" in text
-            obs["report_lists_cause"] = "signal_did_not_reach_area" in text
-            obs["report_shows_rate_scale_table"] = "12.5" in text and "340" in text
-            obs["report_has_no_fake_accuracy"] = (
-                "정확도 0" not in text and "accuracy" not in text.lower())
+    def check_46_checkpoint_selection(self) -> CheckResult:
+        """준비 파일/미완료 JSON은 재개 체크포인트로 선택되지 않는다."""
+        with tempfile.TemporaryDirectory(prefix="vcg_checkpoint_selection_") as tmp:
+            mgr = CheckpointManager(Path(tmp))
+            write_json(mgr.dir / "preparation_state.json", {"format": "preparation"})
+            write_json(mgr.dir / "partial.json", {"committed": False})
+            empty_ok = mgr.latest() is None
+            missing_rejected = False
             try:
-                make_figures(tmp)
-                obs["figures_refused"] = False
-            except RuntimeError as exc:
-                obs["figures_refused"] = True
-                obs["figures_message_explains"] = (
-                    STATUS_UPPER[STATUS_INSUFFICIENT_SIGNAL] in str(exc))
-            except Exception:
-                obs["figures_refused"] = True
-                obs["figures_message_explains"] = False
-        finally:
-            shutil.rmtree(tmp, ignore_errors=True)
-        passed = all(bool(v) for v in obs.values())
+                mgr.load(None)
+            except FileNotFoundError:
+                missing_rejected = True
+            expected = np.array([15.0, 15.5, 14.5], dtype=np.float64)
+            path = mgr.save("batch_0001", meta={"format": "unit_fixture"},
+                            tensors={"theta_base": expected})
+            # 준비 파일을 더 나중에 써도 latest가 가리키면 안 된다.
+            write_json(mgr.dir / "preparation_state.json", {"format": "preparation", "later": True})
+            selected = mgr.latest()
+            meta, tensors = mgr.load(selected)
+            ok = (empty_ok and missing_rejected and selected == path
+                  and meta["committed"] and np.array_equal(tensors["theta_base"], expected))
         return CheckResult(
-            "check_46_insufficient_signal_is_explained",
-            "준비 단계 중단 실행의 보고서가 이유·수치를 보여 주고 가짜 수치를 "
-            "만들지 않는다",
-            STATUS_PASSED if passed else STATUS_FAILED,
-            "보고서에 INSUFFICIENT_SIGNAL, 중단 지점, 원인 후보, 영역별 발화 수가 "
-            "나오고, 그림 생성은 이유를 밝히며 거부한다",
-            obs, "임시 폴더에 만든 중단 실행 기록 -> ReportBuilder / make_figures")
+            "check_46_checkpoint_selection", "완료된 JSON/NPZ 체크포인트만 선택",
+            STATUS_PASSED if ok else STATUS_FAILED,
+            "준비/미완료 파일 제외, None 명시 거부, 실제 저장 배열 무손실 복원",
+            {"preparation_not_checkpoint": empty_ok, "none_rejected": missing_rejected,
+             "selected_actual_checkpoint": selected == path,
+             "theta_roundtrip_equal": bool(np.array_equal(tensors["theta_base"], expected))},
+            "임시 파일 fixture; 학습/감각 실험 아님")
+
+    def check_47_unlabelled_image_batch(self) -> CheckResult:
+        require_torch()
+        # Runner 초기화나 GPU 회로 생성 없이 영상 변환 API만 검사한다.
+        runner = ExperimentRunner.__new__(ExperimentRunner)
+        runner.cfg, runner.device, runner.dtype = self.tiny_cfg, self.device, self.dtype
+        st = Stimulus("external_png", "external_png", "unknown", "classification",
+                      [np.zeros((8, 8, 3), dtype=np.float32)], {})
+        images, labels = runner._batch_tensor([st], require_labels=False)
+        rejected_for_training = False
+        try:
+            runner._batch_tensor([st])
+        except ValueError:
+            rejected_for_training = True
+        ok = tuple(images.shape) == (1, 3, 8, 8) and labels is None and rejected_for_training
+        return CheckResult(
+            "check_47_unlabelled_image_batch", "외부 영상 추론은 정답 라벨을 요구하지 않음",
+            STATUS_PASSED if ok else STATUS_FAILED,
+            "unknown 라벨 영상의 추론 변환 성공; 지도학습에서는 unknown을 거부",
+            {"shape": list(images.shape), "labels_is_none": labels is None,
+             "unknown_training_label_rejected": rejected_for_training},
+            "작은 영상 텐서 변환 API; 학습/분류 성능 검사 아님")
+
+    def check_48_initial_state_before_simulation(self) -> CheckResult:
+        t = require_torch()
+        cfg = json.loads(json.dumps(self.tiny_cfg))
+        m = self._fresh_model(cfg)
+        net = RecurrentCortexNetwork(cfg, m, m.seeds)
+        ids = m.neurons.indices_of("V1", ["L2", "L3"], ["pyramidal"])
+        nid = int(ids[0])
+        m.prepare(1, 1)
+        initial = {k: np.asarray(v).copy() for k, v in m.state.state_dict().items()}
+        initial["V"][0, 0, nid, COMP_INDEX["soma"]] = float(m.neurons.EL_mV[nid, 0]) + 40.0
+        zero = t.zeros((1, N_CHANNEL, m.sampler.n_samples), dtype=self.dtype, device=self.device)
+        drive = m.make_drive(zero, 1)
+        rest = net.settle_chain(None, None, None, None, drive, None, 1)
+        warm = net.settle_chain(None, None, None, None, drive, initial, 1)
+        rest_spikes = int(rest["spike_count"][0, 0, nid])
+        warm_spikes = int(warm["spike_count"][0, 0, nid])
+        ok = rest_spikes == 0 and warm_spikes > 0
+        return CheckResult(
+            "check_48_initial_state_before_simulation", "초기 막 상태가 실제 적분 전에 적용됨",
+            STATUS_PASSED if ok else STATUS_FAILED,
+            "외부 입력 0, 1스텝: 휴지 초기값은 무발화, 탈분극 초기값은 발화",
+            {"rest_spikes": rest_spikes, "warm_start_spikes": warm_spikes,
+             "neuron_id": nid, "delay_ring_starts_empty": True},
+            "tiny 모델 초기조건 단위 검사; 중간 시점 재개 검사가 아님")
 
     def check_45_run_dir_resolution(self) -> CheckResult:
         """실행 폴더가 아닌 경로에서 **빈 보고서를 만들지 않는지** 확인한다.
@@ -12083,7 +15224,7 @@ def run_validation(cfg: dict[str, Any], output_root: Path, device_choice: str,
 # ======================================================================
 MENU_TEXT = """
 ==================================================================
-  시각피질 GPU 시뮬레이터 (초기 임계값 15 -> L2/L3 임계값 학습)
+  시각피질 GPU 시뮬레이터 (초기 임계값 10 -> L2/L3 임계값 학습)
 ==================================================================
   1. 환경·설정·메모리 예상 확인
   2. 작은 기능 검사 실행
@@ -12095,11 +15236,27 @@ MENU_TEXT = """
   8. 체크포인트에서 재개
   9. 저장 기록으로 보고서/그림 생성
  10. CPU/GPU 성능 비교
+ 11. 억제 점진 복원 실험 (약한 억제 -> 원래 수준 복원)
   0. 종료
 ==================================================================
   고른 작업만 실행한다. 아무 것도 자동으로 이어서 돌리지 않는다.
   readout/decoder 준비는 5번 학습 작업 안의 준비 단계로 실행된다.
 =================================================================="""
+
+INHIBITION_MENU_TEXT = """
+------------------------------------------------------------------
+  11. 억제 점진 복원 실험
+------------------------------------------------------------------
+  1. 학습 없는 억제 진단 (배율별 전달·구별·무입력·포화 측정)
+  2. 점진 복원 단일 학습 (조건 하나)
+  3. 네 조건 비교 (공통 준비 스냅샷에서 출발)
+  0. 뒤로
+------------------------------------------------------------------
+  inhibition_gain 은 억제성 뉴런의 **출력 효과** 배율이다.
+  주의 매개변수 alpha_att 와 다른 변수다.
+  세포를 삭제하거나 발화를 0 으로 만들지 않고, w0 와 역전위도 바꾸지 않는다.
+  성공을 전제하지 않는다. 모든 뉴런이 동시에 발화하는 것이 목표가 아니다.
+------------------------------------------------------------------"""
 
 
 def _ask(prompt: str, default: str = "") -> str:
@@ -12162,6 +15319,7 @@ class KoreanMenu:
         tl = cfg["threshold_learning"]
         print(f"  임계값 초기값 {tl['theta0_mV']} (모든 뉴런 동일), "
               f"V_unit={V_UNIT_MV} mV")
+        print(f"  초기 연결 강도 보정 기준: {WEIGHT_CALIBRATION_THRESHOLD} mV (발화 기준과 별도)")
         print(f"  임계값 학습: {tl['enabled']} / 조건 {tl['condition']} / "
               f"대상 {tl['target_layers']} {tl['target_cell_types']} "
               f"(경계 {tl['theta_min_mV']}~{tl['theta_max_mV']} mV)")
@@ -12257,8 +15415,8 @@ class KoreanMenu:
                       f"임계 여유 u {v['threshold_margin_u_max']:+.3f}")
             print(f"\n결과: {runner.run_dir}")
         elif choice == "4":
-            path = _ask("영상 파일 경로 (비우면 내장 도형 사용)", "")
-            ckpt = _ask("교사 없는 추론에 쓸 학습 실행 폴더 (비우면 추론 생략)", "")
+            path = _ask("영상 파일 경로 PNG/JPG (폴더가 아님, 비우면 내장 도형 사용)", "")
+            ckpt = _ask("학습이 완료된 train_... 폴더 (영상 폴더가 아님, 비우면 추론 생략)", "")
             runner = ExperimentRunner(cfg, output_root=out,
                                       device_choice=self.device_choice, env=self.env)
             ck = clean_user_path(ckpt) if ckpt else None
@@ -12339,22 +15497,9 @@ class KoreanMenu:
                                  epochs=epochs,
                                  progress=lambda m: print(f"  … {m}"))
             for cond, r in res["results"].items():
-                print(f"  {cond:28s} 상태 {str(r.get('status')):20s} "
+                print(f"  {cond:28s} 상태 {r.get('status'):10s} "
                       f"순방향 {r.get('forward_calls')} "
-                      f"판정 {(r.get('learning_outcome') or {}).get('verdict')}")
-                if r.get("status") != "completed":
-                    print(f"      -> {r.get('reason_ko') or r.get('reason') or ''}")
-                    for c in (r.get("diagnosis") or {}).get("candidate_causes", []):
-                        print(f"      -> 원인 후보 `{c.get('cause')}`: "
-                              f"{c.get('evidence_ko','')}")
-                    if r.get("error"):
-                        print(f"      -> 오류: {r['error']}")
-            bad = [c for c, r in res["results"].items()
-                   if r.get("status") != "completed"]
-            if bad:
-                print(f"\n  [알림] 완료되지 않은 조건 {len(bad)}개: {bad}")
-                print("         각 조건 폴더의 report_ko.md 와 preparation.json 에 "
-                      "수치와 함께 이유가 들어 있다.")
+                      f"판정 {r.get('learning_outcome', {}).get('verdict')}")
             print(f"\n결과: {res['root']}")
         elif choice == "7":
             print("\n  넣을 것은 **파일이 아니라 실행 폴더**다. 메뉴 4(시뮬레이션)나 "
@@ -12451,14 +15596,177 @@ class KoreanMenu:
                       f"스텝당 {r['kernel_ms_per_step']:8.3f} ms "
                       f"({r['measurement_method']})")
             print(f"\n결과: {runner.run_dir}")
+        elif choice == "11":
+            self.inhibition_menu(cfg, out)
         else:
-            print(f"  '{choice}' 은(는) 없는 번호다. 0~10 중에서 고르라.")
+            print(f"  '{choice}' 은(는) 없는 번호다. 0~11 중에서 고르라.")
+
+    # ------------------------------------------------------------------
+    def inhibition_menu(self, cfg: dict[str, Any], out: Path) -> None:
+        """11번 하위 메뉴. 고른 작업만 수행하고 자동으로 학습을 시작하지 않는다."""
+        sched = InhibitionSchedule.from_config(cfg)
+        n_cortex = sum(1 for v in cfg["areas"].values() if v["kind"] == "cortex")
+        while True:
+            print(INHIBITION_MENU_TEXT)
+            print(f"  현재 설정: preset={self.preset} "
+                  f"({n_cortex}개 피질 영역), "
+                  f"자극 {cfg['engine']['sample_ms']} ms / "
+                  f"dt {cfg['engine']['dt_ms']} ms")
+            print(f"  스케줄: start={sched.start} -> end={sched.end}, "
+                  f"warmup {sched.warmup_epochs} + ramp {sched.ramp_epochs} + "
+                  f"hold {sched.hold_epochs} = 총 {sched.total_epochs} 에폭 "
+                  f"({sched.kind})")
+            print(f"  진단 배율 목록: {cfg['inhibition']['scan_values']}")
+            sub = _ask("번호를 선택하라", "0")
+            if sub == "0":
+                return
+            if sub == "1":
+                raw = _ask("검사할 배율 목록 (쉼표 구분, 비우면 기본값)", "")
+                vals = (_parse_float_list(raw, name="배율 목록") if raw else None)
+                n_v = len(vals or cfg["inhibition"]["scan_values"])
+                n_s = 3 + min(6, len(cfg["decoder"]["classes"])) + 2
+                print(f"  [예상 작업량] 배율 {n_v}개 x 자극 약 {n_s}개 "
+                      f"(+반복 1회) = 약 {n_v * (n_s + 1)} 회의 "
+                      f"{cfg['engine']['sample_ms']} ms 순방향 실행. 학습은 없다.")
+                if _ask("실행할까? (y/n)", "n").lower() not in ("y", "yes"):
+                    print("  취소했다.")
+                    continue
+                runner = ExperimentRunner(cfg, output_root=out,
+                                          device_choice=self.device_choice,
+                                          env=self.env)
+                res = runner.run_inhibition_scan(values=vals)
+                print(f"\n상태: {res['status']} {res.get('reason','')}")
+                print("  배율별 판정 (전달 / IT구별 / 무입력 / 포화 / 종합):")
+                for r in res["summary"]["per_value"]:
+                    print(f"    alpha={r['inhibition_gain']:<6} "
+                          f"{str(r['transmits']):<5} "
+                          f"{str(r['it_distinguishable']):<5} "
+                          f"{str(r['blank_response_ok']):<5} "
+                          f"{str(r['saturation_ok']):<5} -> "
+                          f"{'사용 가능' if r['usable'] else '사용 불가'}")
+                low = res["summary"]["lowest_usable_gain"]
+                print(f"  학습에 쓸 수 있는 가장 낮은 배율: {low}")
+                bn = res["summary"].get("zero_gain_bottleneck")
+                if bn:
+                    print("  [알림] 배율 0 에서도 전달되지 않는다. 억제를 더 줄여도 "
+                          "해결되지 않는다 (이미 0 이다).")
+                    for c in bn["candidate_causes_ko"]:
+                        print(f"    - 잔여 병목 후보: {c}")
+                print(f"\n결과: {runner.run_dir}")
+            elif sub == "2":
+                print(f"  조건: {', '.join(INHIBITION_CONDITIONS)} "
+                      f"(선택: {', '.join(INHIBITION_OPTIONAL_CONDITIONS)})")
+                cond = _ask("조건", "ramp_local")
+                allowed = INHIBITION_CONDITIONS + INHIBITION_OPTIONAL_CONDITIONS
+                if cond not in allowed:
+                    print(f"  '{cond}' 는 없는 조건이다.")
+                    continue
+                bs = int(cfg["training"]["batch_size"])
+                n_tr = (int(cfg["data"]["n_base_per_class"])
+                        * int(cfg["data"]["n_variants"])
+                        * len(cfg["decoder"]["classes"]))
+                n_b = max(1, math.ceil(n_tr * 0.6 / bs))
+                per_ep = n_b * (2 + int(cfg["threshold_learning"]["K_rounds"]))
+                print(f"  [예상 작업량] {sched.total_epochs} 에폭 x 약 {n_b} 배치 "
+                      f"x (자유 1 + round {cfg['threshold_learning']['K_rounds']} "
+                      f"+ 사후 1) = 약 {sched.total_epochs * per_ep} 회의 "
+                      f"{cfg['engine']['sample_ms']} ms 순방향 실행 + 준비 단계")
+                print("  준비 단계는 이 학습 작업 안에서 수행된다. 다른 메뉴에서 "
+                      "자동으로 이어지지 않는다.")
+                if _ask("실행할까? (y/n)", "n").lower() not in ("y", "yes"):
+                    print("  취소했다.")
+                    continue
+                runner = ExperimentRunner(cfg, output_root=out,
+                                          device_choice=self.device_choice,
+                                          env=self.env)
+                res = runner.run_inhibition_train(condition=cond)
+                self._print_inhibition_train_result(res)
+                print(f"\n결과: {runner.run_dir}")
+            elif sub == "3":
+                print(f"  필수 네 조건: {', '.join(INHIBITION_CONDITIONS)}")
+                raw = _ask("시드 목록 (쉼표 구분, 비우면 현재 시드 하나)", "")
+                seed_list = (_parse_int_list(raw, name="시드 목록") if raw
+                             else [int(cfg["seed"])])
+                if len(seed_list) < 2:
+                    print("  [알림] 단일 시드 실행은 탐색용이다. 단일 시드 개선을 "
+                          "일반적인 성공으로 결론 내리지 않는다.")
+                print(f"  [예상 작업량] 시드 {len(seed_list)}개 x 조건 4개 x "
+                      f"{sched.total_epochs} 에폭. 준비는 시드당 한 번만 한다.")
+                if _ask("실행할까? (y/n)", "n").lower() not in ("y", "yes"):
+                    print("  취소했다.")
+                    continue
+                res = run_inhibition_compare(
+                    cfg, out, self.device_choice, seeds=seed_list,
+                    progress=lambda m: print(f"  … {m}"))
+                for name, row in res["paired_differences"]["per_pair"].items():
+                    print(f"  {name}: 평균 정확도 차이 "
+                          f"{row['mean_delta_accuracy']} "
+                          f"(시드 {row['n_usable_seeds']}개) — "
+                          f"{row['description_ko']}")
+                if res["failures"]:
+                    print(f"  [알림] 실패한 조건 {len(res['failures'])}개를 표에서 "
+                          f"빼지 않고 null 과 이유로 남겼다:")
+                    for f in res["failures"]:
+                        print(f"    - 시드 {f['seed']} / {f['condition']}: "
+                              f"{f['error']}")
+                print(f"\n결과: {res['root']}")
+            else:
+                print(f"  '{sub}' 은(는) 없는 번호다. 0~3 중에서 고르라.")
+
+    @staticmethod
+    def _print_inhibition_train_result(res: dict[str, Any]) -> None:
+        if res.get("status") == STATUS_INSUFFICIENT_SIGNAL:
+            print(f"\n[중단] {res.get('reason_ko')}")
+            print(f"  중단 지점: {res.get('stopped_at')} "
+                  f"(배율 {res.get('inhibition_gain')})")
+            d = res.get("diagnosis") or {}
+            for key in ("transmits", "it_distinguishable", "blank_response_ok",
+                        "saturation_ok"):
+                v = d.get(key)
+                if isinstance(v, dict):
+                    print(f"  {key}: {v.get('pass')}")
+            print(f"  {res.get('not_run_ko','')}")
+            return
+        print(f"\n상태: {res['status']} / 조건 {res['condition']}")
+        sch = res["schedule"]
+        print(f"  스케줄: {sch['start']} -> {sch['end']} "
+              f"({sch['kind']}, 총 {sch['total_epochs']} 에폭), "
+              f"준비 배율 {res.get('prepared_at_inhibition_gain')}")
+        print(f"  준비 산출물 불변: {res.get('preparation_signatures_unchanged')}")
+        tc = res.get("theta_change") or {}
+        print(f"  theta 변화 평균 |Δθ| {tc.get('mean_abs_change_mV')} mV, "
+              f"마스크 밖 변화 {tc.get('n_changed_outside_mask')}개")
+        test = res.get("test") or {}
+        print(f"  최종 시험(배율 {res.get('final_eval_gain')}, 교사 없음): "
+              f"상태 {test.get('status')} CE {test.get('cross_entropy')} "
+              f"정확도 {test.get('accuracy')}")
+        lo = res.get("learning_outcome") or {}
+        print(f"  dev CE: start 배율 {lo.get('dev_ce_at_start_gain')} / "
+              f"end 배율 {lo.get('dev_ce_at_end_gain')}")
+        print("  '억제를 줄여 살아났다' / '교정이 도움이 됐다' / '정상 억제로 "
+              "복원한 뒤에도 유지됐다' 는 서로 다른 결론이다.")
 
 
 CLI_MODES: tuple[str, ...] = (
     "env", "inspect", "validate", "diagnose", "simulate", "train", "compare",
     "resume", "report", "benchmark", "inspect-neuron",
+    # ---- 억제 점진 복원 실험 (새로 추가) ----
+    "inhibition-scan", "inhibition-train", "inhibition-compare",
 )
+
+#: 각 새 옵션이 의미를 갖는 모드. 의미 없는 곳에 주면 조용히 무시하지 않고 막는다.
+INHIBITION_OPTION_MODES: dict[str, tuple[str, ...]] = {
+    "inhibition_values": ("inhibition-scan",),
+    "inhibition_start": ("inhibition-train", "inhibition-compare"),
+    "inhibition_end": ("inhibition-train", "inhibition-compare"),
+    "warmup_epochs": ("inhibition-train", "inhibition-compare"),
+    "ramp_epochs": ("inhibition-train", "inhibition-compare"),
+    "hold_epochs": ("inhibition-train", "inhibition-compare"),
+    "inhibition_schedule": ("inhibition-train", "inhibition-compare"),
+    "inhibition_condition": ("inhibition-train",),
+    "inhibition_eval_gain": ("inhibition-train", "inhibition-compare", "simulate"),
+    "seeds": ("inhibition-compare",),
+}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -12466,7 +15774,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog=f"python {Path(__file__).name}",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
-            "초기 임계값 15 에서 L2/L3 흥분성 뉴런의 임계값을 학습하는 GPU 시각피질 "
+            "초기 임계값 10 에서 L2/L3 흥분성 뉴런의 임계값을 학습하는 GPU 시각피질 "
             "모형.\n"
             "L5 가 오류 위치를, L6 가 과잉·부족을 정하고 L1 이 하위 임계값을 "
             "조절한다.\n"
@@ -12489,8 +15797,23 @@ def build_parser() -> argparse.ArgumentParser:
             "--run-dir \"D:\\CortexResults\\train_...\"\n"
             f"  python {Path(__file__).name} --mode report "
             "--run-dir \"D:\\CortexResults\\train_...\" --figures\n"
+            f"  python {Path(__file__).name} --mode inhibition-scan "
+            "--preset hierarchy_small --device cuda "
+            "--output \"D:\\CortexResults\"\n"
+            f"  python {Path(__file__).name} --mode inhibition-train "
+            "--preset hierarchy_small --device cuda --inhibition-start 0.01 "
+            "--inhibition-end 1.0 --warmup-epochs 5 --ramp-epochs 20 "
+            "--hold-epochs 5 --inhibition-schedule cosine "
+            "--output \"D:\\CortexResults\"\n"
+            f"  python {Path(__file__).name} --mode inhibition-compare "
+            "--preset hierarchy_small --device cuda --seeds 42,43,44,45,46 "
+            "--output \"D:\\CortexResults\"\n"
             "\n임계값 학습 조건: " + ", ".join(THRESHOLD_CONDITIONS) + "\n"
-            "legacy P-only 조건: " + ", ".join(LEGACY_GAIN_MODES) + "\n"))
+            "legacy P-only 조건: " + ", ".join(LEGACY_GAIN_MODES) + "\n"
+            "억제 실험 조건: " + ", ".join(INHIBITION_CONDITIONS)
+            + " (선택: " + ", ".join(INHIBITION_OPTIONAL_CONDITIONS) + ")\n"
+            "억제 실험의 총 에폭 수 = warmup + ramp + hold 다. --epochs 와 함께 "
+            "쓰지 않는다.\n"))
     p.add_argument("--mode", choices=CLI_MODES,
                    help="실행할 작업. 생략하면 한국어 메뉴가 열린다")
     p.add_argument("--preset", choices=PRESETS, default="v1_small",
@@ -12547,7 +15870,141 @@ def build_parser() -> argparse.ArgumentParser:
                    help="차분 목표 전달 계수")
     p.add_argument("--alpha-att", type=float, default=None,
                    help="주의 세기 (0 이면 attention 효과가 정확히 없다)")
+    # ---- 억제 점진 복원 실험 (새 옵션. 기존 옵션 이름은 바꾸지 않았다) ----
+    g = p.add_argument_group(
+        "억제 점진 복원 실험",
+        "inhibition_gain 은 억제성 뉴런의 출력 효과 배율이며 --alpha-att 와 "
+        "다른 변수다.")
+    g.add_argument("--inhibition-values", default=None,
+                   help="inhibition-scan 의 배율 목록 (쉼표 구분, 각각 0~1). "
+                        f"기본: {','.join(str(v) for v in INHIBITION_SCAN_VALUES)}")
+    g.add_argument("--inhibition-start", type=float, default=None,
+                   help="스케줄 시작 배율 (0~1, 기본 0.01)")
+    g.add_argument("--inhibition-end", type=float, default=None,
+                   help="스케줄 끝 배율 (0~1, 기본 1.0). 최종 시험도 이 배율이다")
+    g.add_argument("--warmup-epochs", type=int, default=None,
+                   help="start 를 유지하는 에폭 수 (0 이상, 기본 5)")
+    g.add_argument("--ramp-epochs", type=int, default=None,
+                   help="start->end 복원 에폭 수 (1 이상, 기본 20)")
+    g.add_argument("--hold-epochs", type=int, default=None,
+                   help="end 를 유지하는 에폭 수 (0 이상, 기본 5)")
+    g.add_argument("--inhibition-schedule", choices=INHIBITION_SCHEDULES,
+                   default=None, help="복원 곡선 모양 (기본 cosine)")
+    g.add_argument("--inhibition-condition",
+                   choices=list(INHIBITION_CONDITIONS
+                                + INHIBITION_OPTIONAL_CONDITIONS),
+                   default=None,
+                   help="inhibition-train 의 조건 (기본 ramp_local)")
+    g.add_argument("--inhibition-eval-gain", type=float, default=None,
+                   help="최종 평가 배율을 직접 지정한다. 주면 결과에 "
+                        "'사용자가 덮어썼다' 고 표시된다 (기본: 스케줄의 end)")
+    g.add_argument("--seeds", default=None,
+                   help="inhibition-compare 의 시드 목록 (쉼표 구분). "
+                        "예: 42,43,44,45,46. 생략하면 --seed 하나만 쓴다")
     return p
+
+
+def _parse_float_list(raw: str, *, name: str) -> list[float]:
+    """쉼표 구분 실수 목록. 잘못된 값은 조용히 넘기지 않고 막는다."""
+    out: list[float] = []
+    for part in str(raw).split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            v = float(part)
+        except ValueError as exc:
+            raise SystemExit(f"{name} 에 숫자가 아닌 값이 있다: {part!r}") from exc
+        if not math.isfinite(v):
+            raise SystemExit(f"{name} 에 유한수가 아닌 값이 있다: {part!r}")
+        out.append(v)
+    if not out:
+        raise SystemExit(f"{name} 가 비어 있다.")
+    return out
+
+
+def _parse_int_list(raw: str, *, name: str) -> list[int]:
+    out: list[int] = []
+    for part in str(raw).split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            out.append(int(part))
+        except ValueError as exc:
+            raise SystemExit(f"{name} 에 정수가 아닌 값이 있다: {part!r}") from exc
+    if not out:
+        raise SystemExit(f"{name} 가 비어 있다.")
+    if len(set(out)) != len(out):
+        raise SystemExit(f"{name} 에 중복된 시드가 있다: {out}")
+    return out
+
+
+def _check_inhibition_option_modes(args: argparse.Namespace) -> None:
+    """의미 없는 모드에 준 새 옵션을 **조용히 무시하지 않고** 막는다."""
+    mode = str(args.mode or "")
+    bad: list[str] = []
+    for attr, modes in INHIBITION_OPTION_MODES.items():
+        if getattr(args, attr, None) is None:
+            continue
+        if mode not in modes:
+            flag = "--" + attr.replace("_", "-")
+            bad.append(f"{flag} 는 {list(modes)} 에서만 의미가 있다 "
+                       f"(지금 --mode {mode or '없음'})")
+    if bad:
+        raise SystemExit("옵션과 모드가 맞지 않는다:\n  - " + "\n  - ".join(bad))
+    # 기존 --epochs 와 단계별 에폭 수의 충돌은 조용히 정하지 않는다
+    stage_given = any(getattr(args, a, None) is not None
+                      for a in ("warmup_epochs", "ramp_epochs", "hold_epochs"))
+    if (mode in ("inhibition-train", "inhibition-compare")
+            and getattr(args, "epochs", None) is not None):
+        raise SystemExit(
+            "억제 실험의 총 에폭 수는 --warmup-epochs / --ramp-epochs / "
+            "--hold-epochs 의 합으로 정해진다.\n"
+            "  --epochs 를 함께 주면 어느 쪽이 이기는지 조용히 정하지 않고 "
+            "여기서 멈춘다. 둘 중 하나만 써라.")
+    if stage_given and mode not in ("inhibition-train", "inhibition-compare"):
+        raise SystemExit(
+            "단계별 에폭 수 옵션은 inhibition-train / inhibition-compare 에서만 "
+            "쓴다.")
+    if (getattr(args, "seeds", None) is not None
+            and getattr(args, "seed", None) is not None):
+        raise SystemExit(
+            "--seeds 와 --seed 를 함께 줄 수 없다. 여러 시드는 --seeds, 하나는 "
+            "--seed 로 지정한다.")
+    # 값 자체의 유효성도 **torch 가 없는 환경에서도** 먼저 잡는다.
+    if getattr(args, "inhibition_values", None) is not None:
+        for v in _parse_float_list(args.inhibition_values,
+                                   name="--inhibition-values"):
+            if not (INHIBITION_GAIN_MIN <= v <= INHIBITION_GAIN_MAX):
+                raise SystemExit(
+                    f"--inhibition-values 의 배율은 [0, 1] 이어야 한다: {v}")
+    if getattr(args, "seeds", None) is not None:
+        _parse_int_list(args.seeds, name="--seeds")
+    for flag, attr in (("--inhibition-start", "inhibition_start"),
+                       ("--inhibition-end", "inhibition_end"),
+                       ("--inhibition-eval-gain", "inhibition_eval_gain")):
+        v = getattr(args, attr, None)
+        if v is None:
+            continue
+        if not math.isfinite(float(v)):
+            raise SystemExit(f"{flag} 는 유한수여야 한다: {v!r}")
+        if not (INHIBITION_GAIN_MIN <= float(v) <= INHIBITION_GAIN_MAX):
+            raise SystemExit(f"{flag} 는 [0, 1] 이어야 한다: {v}")
+    a_s, a_e = getattr(args, "inhibition_start", None), \
+        getattr(args, "inhibition_end", None)
+    if a_s is not None and a_e is not None and float(a_s) > float(a_e):
+        raise SystemExit(
+            f"--inhibition-start 는 --inhibition-end 보다 클 수 없다 "
+            f"({a_s} > {a_e})")
+    if (getattr(args, "ramp_epochs", None) is not None
+            and int(args.ramp_epochs) < 1):
+        raise SystemExit(f"--ramp-epochs 는 1 이상이어야 한다: {args.ramp_epochs}")
+    for flag, attr in (("--warmup-epochs", "warmup_epochs"),
+                       ("--hold-epochs", "hold_epochs")):
+        v = getattr(args, attr, None)
+        if v is not None and int(v) < 0:
+            raise SystemExit(f"{flag} 는 0 이상이어야 한다: {v}")
 
 
 def _cfg_from_args(args: argparse.Namespace) -> dict[str, Any]:
@@ -12579,6 +16036,27 @@ def _cfg_from_args(args: argparse.Namespace) -> dict[str, Any]:
             tl[key] = cast(val)
     if getattr(args, "alpha_att", None) is not None:
         tl["attention"]["alpha_att"] = float(args.alpha_att)
+    # ---- 억제 점진 복원 실험 옵션 ----------------------------------
+    inh = cfg["inhibition"]
+    if getattr(args, "inhibition_values", None) is not None:
+        inh["scan_values"] = _parse_float_list(args.inhibition_values,
+                                               name="--inhibition-values")
+    for attr, key, cast in (("inhibition_start", "start", float),
+                            ("inhibition_end", "end", float),
+                            ("warmup_epochs", "warmup_epochs", int),
+                            ("ramp_epochs", "ramp_epochs", int),
+                            ("hold_epochs", "hold_epochs", int),
+                            ("inhibition_schedule", "schedule", str),
+                            ("inhibition_condition", "condition", str)):
+        val = getattr(args, attr, None)
+        if val is not None:
+            inh[key] = cast(val)
+    if getattr(args, "inhibition_eval_gain", None) is not None:
+        inh["eval_gain"] = float(args.inhibition_eval_gain)
+    # 억제 실험 모드에서는 스케줄의 start 에서 출발한다.
+    if str(getattr(args, "mode", "")) in ("inhibition-train",
+                                          "inhibition-compare"):
+        inh["gain"] = float(inh["start"])
     validate_config(cfg)
     return cfg
 
@@ -12599,6 +16077,7 @@ def _need_run_dir(args: argparse.Namespace) -> Path:
 
 
 def run_cli(args: argparse.Namespace) -> int:
+    _check_inhibition_option_modes(args)
     env = EnvironmentInfo.detect()
     say = lambda m: print(f"  … {m}", flush=True)      # noqa: E731
     if args.mode == "env":
@@ -12691,6 +16170,41 @@ def run_cli(args: argparse.Namespace) -> int:
                                   "paired_correction_metrics")}))
         print(f"결과: {runner.run_dir}")
         return 0 if res["status"] == "completed" else 1
+    if args.mode == "inhibition-scan":
+        out = _need_output(args)
+        runner = _runner(output_root=out)
+        vals = (_parse_float_list(args.inhibition_values,
+                                  name="--inhibition-values")
+                if args.inhibition_values else None)
+        res = runner.run_inhibition_scan(values=vals)
+        print(dumps(res["summary"]))
+        print(f"결과: {runner.run_dir}")
+        return 0 if res["status"] == "completed" else 1
+    if args.mode == "inhibition-train":
+        out = _need_output(args)
+        runner = _runner(output_root=out)
+        res = runner.run_inhibition_train(
+            condition=args.inhibition_condition,
+            max_samples=args.max_samples,
+            reuse_preparation=(clean_user_path(args.reuse_preparation)
+                               if args.reuse_preparation else None))
+        print(dumps({k: v for k, v in res.items()
+                     if k not in ("history", "dev_history", "readout_drift",
+                                  "schedule_table", "pre_check", "preparation")}))
+        print(f"결과: {runner.run_dir}")
+        return 0 if res["status"] == "completed" else 1
+    if args.mode == "inhibition-compare":
+        out = _need_output(args)
+        seed_list = (_parse_int_list(args.seeds, name="--seeds")
+                     if args.seeds else None)
+        conds = ([c.strip() for c in args.conditions.split(",") if c.strip()]
+                 if args.conditions else None)
+        res = run_inhibition_compare(cfg, out, args.device, conditions=conds,
+                                     seeds=seed_list,
+                                     max_samples=args.max_samples, progress=say)
+        print(dumps(res["paired_differences"]))
+        print(f"결과: {res['root']}")
+        return 0
     if args.mode == "compare":
         out = _need_output(args)
         conds = [c.strip() for c in args.conditions.split(",")] if args.conditions else None
