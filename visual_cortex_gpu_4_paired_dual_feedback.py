@@ -13735,6 +13735,555 @@ def run_engine_cost_compare(cfg: dict[str, Any], output_root: Path, device_choic
     return summary
 
 
+# ======================================================================
+# 4.0 전체 자동 조합 실행 (메뉴 14-K / CLI paired-sweep)
+# ======================================================================
+#: 조합 수준. 축의 모든 값을 **곱**해서 실행한다. 결과가 원리상 같을 수밖에 없는
+#: 조합(예: 교정이 0 인 조건에서 투영 방식만 다른 경우)은 한 번만 계산해 공유한다.
+SWEEP_LEVELS: dict[str, dict[str, Any]] = {
+    "quick": {
+        "wiring": [("paired_only", "summed")],
+        "engines": ["reference_multicompartment"],
+        "projections": ["restorer_difference"],
+        "gate_rules": ["argmax_wrong"],
+        "n_seeds": 1, "epochs": 1, "max_samples": 16,
+        "inhibition_scan": False, "engine_cost": True,
+        "note_ko": "경로·기록 점검용. 결론을 내리기에는 표본이 너무 적다.",
+    },
+    "standard": {
+        "wiring": [("paired_only", "summed"), ("eccentric_fanin", "summed"),
+                   ("eccentric_fanin", "fixed_total_budget")],
+        "engines": ["reference_multicompartment"],
+        "projections": ["restorer_difference", "paired_identity"],
+        "gate_rules": ["argmax_wrong"],
+        "n_seeds": 3, "epochs": 2, "max_samples": 0,
+        "inhibition_scan": True, "engine_cost": True,
+        "note_ko": "배선·투영 축 전체와 조건 전체. 엔진은 참조 엔진만.",
+    },
+    "full": {
+        "wiring": [("paired_only", "summed"), ("eccentric_fanin", "summed"),
+                   ("eccentric_fanin", "fixed_total_budget")],
+        "engines": list(ENGINE_KINDS),
+        "projections": list(PAIRED_PROJECTIONS),
+        "gate_rules": list(PAIRED_GATE_RULES),
+        "n_seeds": 5, "epochs": None, "max_samples": 0,
+        "inhibition_scan": True, "engine_cost": True,
+        "note_ko": "모든 축의 전체 곱. 매우 오래 걸린다. 중단 후 이어서 실행할 수 있다.",
+    },
+}
+
+SWEEP_FORMAT = "visual_cortex_gpu.paired_sweep.v1"
+#: 이 조건들은 교사 교정이 정확히 0 이라 투영 방식·gate 규칙과 무관하다.
+SWEEP_NO_CORRECTION_CONDITIONS: tuple[str, ...] = ("no_correction", "attention_only")
+#: 형태 분기를 적용하지 않으므로 L3->L2 투영 방식과 무관하다.
+SWEEP_NO_SHAPE_CONDITIONS: tuple[str, ...] = ("intensity_only",)
+
+
+def _wiring_tag(mode: str, budget: str) -> str:
+    return mode if mode != "eccentric_fanin" else f"{mode}_{budget}"
+
+
+def sweep_effective_key(cell: dict[str, Any]) -> str:
+    """결과를 바꾸는 축만 남긴 키. 같은 키의 칸은 한 번만 계산한다.
+
+    * no_correction / attention_only: gate 가 0 으로 강제되어 교사 교정이 없다
+      -> 투영·gate 규칙이 결과에 영향을 주지 않는다.
+    * intensity_only: 형태 분기를 적용하지 않는다 -> 투영 방식이 영향을 주지 않는다.
+    """
+    proj = cell["projection"]
+    gate = cell["gate_rule"]
+    if cell["condition"] in SWEEP_NO_CORRECTION_CONDITIONS:
+        proj, gate = "-", "-"
+    elif cell["condition"] in SWEEP_NO_SHAPE_CONDITIONS:
+        proj = "-"
+    return "|".join(str(x) for x in (cell["wiring"], cell["engine"], proj, gate,
+                                     cell["condition"], cell["seed"]))
+
+
+def plan_sweep(base_cfg: dict[str, Any], level: str, *,
+               seeds: Sequence[int] | None = None, epochs: int | None = None,
+               max_samples: int | None = None,
+               conditions: Sequence[str] | None = None) -> dict[str, Any]:
+    """조합 계획을 만든다. **아무것도 실행하지 않는다** (순수 함수).
+
+    축: 배선 x 엔진 x 투영 x gate 규칙 x 조건 x 시드. 결과가 같을 수밖에 없는 칸은
+    ``sweep_effective_key`` 로 묶어 한 번만 실행한다 (축을 줄이는 것이 아니라 중복
+    계산을 없애는 것이다. 표에는 모든 조합이 그대로 남는다).
+    """
+    if level not in SWEEP_LEVELS:
+        raise ValueError(f"알 수 없는 조합 수준: {level!r} (가능: {list(SWEEP_LEVELS)})")
+    lv = SWEEP_LEVELS[level]
+    base_seed = int(base_cfg["seed"])
+    seed_list = [int(s) for s in (seeds or [base_seed + i for i in range(int(lv["n_seeds"]))])]
+    if len(set(seed_list)) != len(seed_list):
+        raise ValueError(f"시드 목록에 중복이 있다: {seed_list}")
+    conds = list(conditions or PAIRED_CONDITIONS)
+    bad = [c for c in conds if c not in PAIRED_CONDITIONS]
+    if bad:
+        raise ValueError(f"알 수 없는 조건: {bad}")
+    ep = int(epochs if epochs is not None else
+             (lv["epochs"] if lv["epochs"] is not None else base_cfg["training"]["epochs"]))
+    ms = int(max_samples if max_samples is not None else lv["max_samples"])
+    wiring = [(m, b) for m, b in lv["wiring"]]
+    cells: list[dict[str, Any]] = []
+    for mode, budget in wiring:
+        for eng in lv["engines"]:
+            for seed in seed_list:
+                for proj in lv["projections"]:
+                    for gate in lv["gate_rules"]:
+                        for cond in conds:
+                            c = {"wiring": _wiring_tag(mode, budget), "wiring_mode": mode,
+                                 "budget_mode": budget, "engine": eng, "seed": seed,
+                                 "projection": proj, "gate_rule": gate, "condition": cond}
+                            c["effective_key"] = sweep_effective_key(c)
+                            cells.append(c)
+    # Windows 경로 길이(260자)를 넘지 않도록 폴더 이름은 짧은 번호로 쓴다.
+    unique: dict[str, str] = {}
+    for c in cells:
+        if c["effective_key"] not in unique:
+            unique[c["effective_key"]] = f"c{len(unique) + 1:04d}"
+        c["cell_id"] = unique[c["effective_key"]]
+    stages: list[dict[str, Any]] = [{"stage_id": "s00_prechecks", "kind": "prechecks",
+                                     "label": "사전 검사 P1~P16"}]
+    contract_wirings = [("legacy", "summed")] + wiring
+    for k, (mode, budget) in enumerate(contract_wirings):
+        stages.append({"stage_id": f"s01_contract_{k}", "kind": "contract",
+                       "label": f"연결 계약 {_wiring_tag(mode, budget)}",
+                       "wiring_mode": mode, "budget_mode": budget})
+    for k, eng in enumerate(lv["engines"]):
+        stages.append({"stage_id": f"s02_transmission_{k}", "label": f"전달 비교 {eng}",
+                       "kind": "transmission", "engine": eng,
+                       "modes": ["legacy"] + sorted({m for m, _ in wiring}),
+                       "budget_modes": sorted({b for m, b in wiring
+                                               if m == "eccentric_fanin"}) or ["summed"]})
+    if lv["engine_cost"]:
+        for k, (mode, budget) in enumerate(contract_wirings):
+            stages.append({"stage_id": f"s03_engine_{k}", "kind": "engine_cost",
+                           "label": f"엔진 비용 {_wiring_tag(mode, budget)}",
+                           "wiring_mode": mode, "budget_mode": budget})
+    if lv["inhibition_scan"]:
+        k = 0
+        for mode, budget in contract_wirings:
+            for eng in lv["engines"]:
+                stages.append({"stage_id": f"s04_inhibition_{k}", "kind": "inhibition_scan",
+                               "label": f"억제 진단 {_wiring_tag(mode, budget)} / {eng}",
+                               "wiring_mode": mode, "budget_mode": budget, "engine": eng})
+                k += 1
+    return {
+        "format": SWEEP_FORMAT, "level": level, "level_definition": lv,
+        "preset": base_cfg["meta"]["preset"], "include_v3": "V3" in base_cfg["areas"],
+        "seeds": seed_list, "conditions": conds, "epochs": ep, "max_samples": ms,
+        "stages": stages, "cells": cells,
+        "n_cells_total": len(cells), "n_cells_executed": len(unique),
+        "n_cells_shared": len(cells) - len(unique),
+        "sharing_rule_ko": ("no_correction/attention_only 은 교사 교정이 0 이라 투영·gate "
+                            "규칙과 무관하고, intensity_only 는 형태 분기를 적용하지 않아 "
+                            "투영과 무관하다. 이런 칸은 한 번만 계산해 같은 결과를 공유한다."),
+        "selection_rule_ko": ("이 조합 실행은 탐색이다. 설정 선택은 dev 로만 하고, 각 칸의 "
+                              "test 는 그 칸의 최종 1회 평가다. test 가 가장 좋은 칸을 골라 "
+                              "성능으로 보고하지 않는다."),
+    }
+
+
+def _sweep_cfg(base_cfg: dict[str, Any], mode: str, budget: str, engine: str, *,
+               seed: int | None = None, projection: str | None = None,
+               gate_rule: str | None = None) -> dict[str, Any]:
+    """사용자의 기본 설정(학습·자료·준비·교정 강도)을 유지한 채 축 값만 바꾼다."""
+    fb = copy.deepcopy(base_cfg["paired"]["feedback"])
+    if projection is not None:
+        fb["l3_to_l2_projection"] = projection
+    if gate_rule is not None:
+        fb["teacher_gate_rule"] = gate_rule
+    cfg = paired_config(base_cfg["meta"]["preset"], mode, engine_kind=engine,
+                        fanin=dict(base_cfg["paired"]["fanin"]),
+                        budget_mode=(budget if mode == "eccentric_fanin" else None),
+                        seed=int(seed if seed is not None else base_cfg["seed"]),
+                        include_v3="V3" in base_cfg["areas"], feedback=fb)
+    for key in ("training", "data", "readout_prep", "recording", "limits", "inhibition",
+                "deterministic", "dtype"):
+        cfg[key] = copy.deepcopy(base_cfg[key])
+    validate_config(cfg)
+    return cfg
+
+
+def _read_progress(root: Path) -> dict[str, dict[str, Any]]:
+    done: dict[str, dict[str, Any]] = {}
+    path = root / "sweep_progress.jsonl"
+    if path.is_file():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                row = json.loads(line)
+                done[row["id"]] = row
+    return done
+
+
+def _append_progress(root: Path, row: dict[str, Any]) -> None:
+    with (root / "sweep_progress.jsonl").open("a", encoding="utf-8") as f:
+        f.write(dumps(row, indent=None) + "\n")
+
+
+def _attempt_dir(base: Path) -> Path:
+    """재시도는 새 하위 폴더에서 한다. 중단된 시도의 부분 기록과 섞지 않는다."""
+    if not base.exists():
+        return base
+    for k in range(1, 1000):
+        cand = base.with_name(f"{base.name}_r{k}")
+        if not cand.exists():
+            return cand
+    raise RuntimeError(f"재시도 폴더를 만들지 못했다: {base}")
+
+
+def _free_device_memory() -> None:
+    import gc
+    gc.collect()
+    if torch is not None and torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
+def run_full_sweep(base_cfg: dict[str, Any], output_root: Path | None, device_choice: str,
+                   *, level: str = "standard", seeds: Sequence[int] | None = None,
+                   epochs: int | None = None, max_samples: int | None = None,
+                   conditions: Sequence[str] | None = None,
+                   resume_dir: Path | None = None, retry_failed: bool = True,
+                   stop_on_precheck_failure: bool = False,
+                   progress: Callable[[str], None] | None = None) -> dict[str, Any]:
+    """모든 신규 테스트를 조합해 순서대로 실행한다. **사용자가 고를 때만** 실행된다.
+
+    순서: 사전 검사 P1~P16 -> 배선별 연결 계약 -> 엔진별 전달 비교 -> 배선별 엔진
+    비용 -> (수준에 따라) 억제 진단 -> 교정 학습 칸 전체 -> 요약·보고서·그림.
+
+    * 칸이 끝날 때마다 ``sweep_progress.jsonl`` 에 기록한다. 같은 폴더로 다시 부르면
+      끝난 칸은 건너뛰고 이어서 실행한다 (``resume_dir``).
+    * 한 칸이 실패해도 나머지를 계속한다. 실패는 표에서 빼지 않는다.
+    * Ctrl+C 는 전체 실행을 멈춘다 (현재 칸은 interrupted 로 남고 다음에 이어진다).
+    * 같은 (배선, 엔진, 시드) 안에서는 첫 학습 칸의 준비 스냅샷을 나머지가 재사용한다.
+    """
+    require_torch()
+    say = progress or (lambda m: None)
+    if resume_dir is not None:
+        root = Path(resume_dir)
+        plan = read_json(root / "sweep_plan.json")
+        if plan.get("format") != SWEEP_FORMAT:
+            raise ValueError(f"조합 실행 폴더가 아니다: {root}")
+        say(f"이어서 실행: {root} (수준 {plan['level']}, 계획은 저장된 것을 쓴다)")
+    else:
+        if output_root is None:
+            raise ValueError("결과를 쓸 폴더가 필요하다")
+        plan = plan_sweep(base_cfg, level, seeds=seeds, epochs=epochs,
+                          max_samples=max_samples, conditions=conditions)
+        root = new_run_dir(Path(output_root), f"paired_sweep_{level}")
+        write_json(root / "sweep_plan.json", plan)
+        write_json(root / "base_config.json", base_cfg)
+        write_json(root / "resolved_config.json", base_cfg)
+    base_cfg = read_json(root / "base_config.json")
+    write_json(root / "manifest.json", {
+        "run_id": root.name, "status": "running", "kind": "paired_sweep",
+        "version": __version__, "code": source_hash(), "config": base_cfg,
+        "config_sha256": config_hash(base_cfg), "level": plan["level"],
+        "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+    done = _read_progress(root)
+    finished = {"completed", STATUS_INSUFFICIENT_SIGNAL}
+    if not retry_failed:
+        finished |= {"failed"}
+    status, reason = "completed", ""
+    t_start = time.time()
+
+    def record(item_id: str, kind: str, st: str, out_dir: Path | None, t0: float,
+               **extra: Any) -> None:
+        row = {"id": item_id, "kind": kind, "status": st,
+               "dir": (str(out_dir) if out_dir is not None else None),
+               "elapsed_s": round(time.time() - t0, 3),
+               "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), **extra}
+        _append_progress(root, row)
+        done[item_id] = row
+
+    try:
+        # ---------------- 단계 0~4 ------------------------------------------
+        for stage in plan["stages"]:
+            sid = stage["stage_id"]
+            if done.get(sid, {}).get("status") in finished:
+                continue
+            say(f"[{sid}] {stage.get('label', '')} 시작")
+            t0 = time.time()
+            out = _attempt_dir(root / "stages" / sid)
+            out.mkdir(parents=True, exist_ok=True)
+            try:
+                kind = stage["kind"]
+                if kind == "prechecks":
+                    names = [n for n in dir(ValidationSuite) if n.startswith("check_")
+                             and "_paired_P" in n]
+                    res = run_validation(base_cfg, out, device_choice, only=names,
+                                         progress=say)
+                    n_fail = int(res["n_failed"])
+                    record(sid, kind, "completed", Path(res["run_dir"]), t0,
+                           n_passed=res["n_passed"], n_failed=n_fail,
+                           n_measured=res["n_measured"],
+                           failed_checks=[c["name"] for c in res["checks"]
+                                          if c["status"] == STATUS_FAILED])
+                    if n_fail and stop_on_precheck_failure:
+                        status, reason = "stopped", f"사전 검사 실패 {n_fail}건으로 중단 (설정)"
+                        break
+                    continue
+                if kind == "contract":
+                    cfg = _sweep_cfg(base_cfg, stage["wiring_mode"], stage["budget_mode"],
+                                     ENGINE_KINDS[0])
+                    runner = ExperimentRunner(cfg, run_dir=out, device_choice=device_choice)
+                    res = runner.run_paired_contract()
+                    record(sid, kind, "completed", out, t0, contract_status=res["status"],
+                           problems=res.get("problems", []))
+                elif kind == "transmission":
+                    cfg = _sweep_cfg(base_cfg, "legacy", "summed", stage["engine"])
+                    res = run_wiring_mode_compare(cfg, out, device_choice,
+                                                  modes=stage["modes"],
+                                                  budget_modes=stage["budget_modes"],
+                                                  progress=say)
+                    record(sid, kind, "completed", Path(res["root"]), t0,
+                           first_failure={k: ((v.get("stimuli") or {}).get("diag_ori_00")
+                                              or [{}])[0].get("first_failure_point")
+                                          for k, v in res["results"].items()})
+                elif kind == "engine_cost":
+                    cfg = _sweep_cfg(base_cfg, stage["wiring_mode"], stage["budget_mode"],
+                                     ENGINE_KINDS[0])
+                    res = run_engine_cost_compare(cfg, out, device_choice, progress=say)
+                    record(sid, kind, "completed", Path(res["root"]), t0,
+                           medians={k: v.get("pure_engine_median_s")
+                                    for k, v in res["results"].items()})
+                elif kind == "inhibition_scan":
+                    cfg = _sweep_cfg(base_cfg, stage["wiring_mode"], stage["budget_mode"],
+                                     stage["engine"])
+                    runner = ExperimentRunner(cfg, run_dir=out, device_choice=device_choice)
+                    res = runner.run_inhibition_scan()
+                    record(sid, kind, str(res.get("status", "completed")), out, t0)
+                else:
+                    raise ValueError(f"알 수 없는 단계: {kind}")
+            except KeyboardInterrupt:
+                record(sid, stage["kind"], "interrupted", out, t0)
+                raise
+            except Exception as exc:
+                record(sid, stage["kind"], "failed", out, t0,
+                       error=f"{type(exc).__name__}: {exc}",
+                       traceback=traceback.format_exc())
+                say(f"[{sid}] 실패: {type(exc).__name__}: {exc} (다음 단계로 계속)")
+            finally:
+                _free_device_memory()
+        # ---------------- 단계 5: 학습 칸 --------------------------------------
+        if status == "completed":
+            executed: dict[str, dict[str, Any]] = {}
+            for c in plan["cells"]:
+                executed.setdefault(c["effective_key"], c)
+            todo = [c for c in executed.values()
+                    if done.get(c["cell_id"], {}).get("status") not in finished]
+            n_total = len(executed)
+            measured: list[float] = []
+            prep_by_group: dict[str, Path] = {}
+            for row in done.values():
+                if row.get("kind") == "train" and row.get("preparation_file"):
+                    prep_by_group.setdefault(row["prep_group"], Path(row["preparation_file"]))
+            for i, c in enumerate(todo):
+                group = f"{c['wiring']}|{c['engine']}|{c['seed']}"
+                n_done = n_total - len(todo) + i
+                eta = ""
+                if measured:
+                    eta = (f", 측정 평균 {np.mean(measured):.0f}s/칸 기준 남은 시간 약 "
+                           f"{np.mean(measured) * (len(todo) - i) / 60:.1f}분 (추정)")
+                say(f"[학습 {n_done + 1}/{n_total}] {c['effective_key']}{eta}")
+                t0 = time.time()
+                out = _attempt_dir(root / "cells" / c["cell_id"])
+                try:
+                    cfg = _sweep_cfg(base_cfg, c["wiring_mode"], c["budget_mode"],
+                                     c["engine"], seed=int(c["seed"]),
+                                     projection=c["projection"], gate_rule=c["gate_rule"])
+                    runner = ExperimentRunner(cfg, run_dir=out, device_choice=device_choice)
+                    runner.setup(c["condition"])
+                    reuse = prep_by_group.get(group)
+                    if reuse is not None and not reuse.is_file():
+                        reuse = None
+                    res = runner.run_paired_train(condition=c["condition"],
+                                                  epochs=int(plan["epochs"]),
+                                                  max_samples=int(plan["max_samples"]),
+                                                  reuse_preparation=reuse)
+                    st = str(res.get("status"))
+                    prep_file = out / "checkpoints" / "preparation_state.json"
+                    if reuse is None and prep_file.is_file():
+                        prep_by_group[group] = prep_file
+                    record(c["cell_id"], "train", st, out, t0,
+                           effective_key=c["effective_key"], prep_group=group,
+                           preparation_file=str(prep_by_group.get(group) or ""),
+                           reused_preparation=str(reuse) if reuse else None)
+                    if st == "interrupted":
+                        status, reason = "interrupted", "사용자 중단 (칸 내부)"
+                        break
+                    measured.append(time.time() - t0)
+                except KeyboardInterrupt:
+                    record(c["cell_id"], "train", "interrupted", out, t0,
+                           effective_key=c["effective_key"], prep_group=group)
+                    raise
+                except Exception as exc:
+                    record(c["cell_id"], "train", "failed", out, t0,
+                           effective_key=c["effective_key"], prep_group=group,
+                           error=f"{type(exc).__name__}: {exc}",
+                           traceback=traceback.format_exc())
+                    say(f"  실패: {type(exc).__name__}: {exc} (다음 칸으로 계속)")
+                finally:
+                    _free_device_memory()
+    except KeyboardInterrupt:
+        status, reason = "interrupted", "사용자가 Ctrl+C 로 중단했다. 같은 폴더로 이어서 실행할 수 있다."
+    summary = build_sweep_summary(root)
+    summary["status"] = status
+    summary["reason"] = reason
+    summary["wall_time_s"] = round(time.time() - t_start, 1)
+    write_json(root / "sweep_summary.json", summary)
+    _write_rows_csv(root / "sweep_summary.csv", summary["rows"])
+    _write_rows_csv(root / "sweep_aggregate.csv", summary["aggregate"])
+    mani = read_json(root / "manifest.json")
+    mani.update(status=status, status_reason=reason,
+                finished_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+    write_json(root / "manifest.json", mani)
+    try:
+        ReportBuilder(root).build()
+    except Exception as exc:                                 # noqa: BLE001
+        summary["report_error"] = f"{type(exc).__name__}: {exc}"
+    try:
+        summary["figures"] = make_figures(root)
+    except Exception as exc:                                 # noqa: BLE001
+        summary["figures_error"] = f"{type(exc).__name__}: {exc}"
+    summary["root"] = str(root)
+    return summary
+
+
+def _mean_sd(vals: Sequence[float]) -> tuple[float | None, float | None]:
+    v = [float(x) for x in vals if x is not None]
+    if not v:
+        return None, None
+    return float(np.mean(v)), (float(np.std(v, ddof=1)) if len(v) >= 2 else None)
+
+
+def build_sweep_summary(root: Path) -> dict[str, Any]:
+    """저장된 파일만 읽어 조합 요약을 만든다 (재실행 없음, PyTorch 불필요)."""
+    root = Path(root)
+    plan = read_json(root / "sweep_plan.json")
+    done = _read_progress(root)
+    stage_rows = [{"stage_id": s["stage_id"], "kind": s["kind"],
+                   "status": done.get(s["stage_id"], {}).get("status", STATUS_NOT_RUN),
+                   **{k: v for k, v in done.get(s["stage_id"], {}).items()
+                      if k in ("n_passed", "n_failed", "n_measured", "failed_checks",
+                               "contract_status", "problems", "first_failure",
+                               "medians", "error", "elapsed_s", "dir")}}
+                  for s in plan["stages"]]
+    results: dict[str, dict[str, Any]] = {}
+    for c in plan["cells"]:
+        key = c["effective_key"]
+        if key in results:
+            continue
+        row = done.get(c["cell_id"], {})
+        res: dict[str, Any] = {"cell_id": c["cell_id"],
+                               "status": row.get("status", STATUS_NOT_RUN),
+                               "elapsed_s": row.get("elapsed_s"),
+                               "error": row.get("error"), "dir": row.get("dir")}
+        path = Path(row["dir"]) / "paired_train.json" if row.get("dir") else None
+        if path is not None and path.is_file():
+            pt = read_json(path)
+            test = pt.get("test") or {}
+            dev = pt.get("dev_history") or []
+            outc = pt.get("learning_outcome") or {}
+            res.update({
+                "status": pt.get("status", res["status"]),
+                "test_accuracy": test.get("accuracy"),
+                "test_cross_entropy": test.get("cross_entropy"),
+                "test_majority_baseline": test.get("majority_baseline"),
+                "dev_ce_first": dev[0].get("cross_entropy") if dev else None,
+                "dev_ce_last": dev[-1].get("cross_entropy") if dev else None,
+                "dev_accuracy_last": dev[-1].get("accuracy") if dev else None,
+                "verdict": outc.get("verdict"),
+                "theta_mean_abs_change_mV": (pt.get("theta_change") or {})
+                .get("mean_abs_change_mV"),
+                "forward_calls": pt.get("forward_calls"),
+            })
+        results[key] = res
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for c in plan["cells"]:
+        r = results[c["effective_key"]]
+        first = c["effective_key"] not in seen
+        seen.add(c["effective_key"])
+        row = {k: c[k] for k in ("wiring", "engine", "projection", "gate_rule",
+                                 "condition", "seed")}
+        row["shared_result_key"] = c["effective_key"]
+        row["result_shared_from_other_combination"] = not first
+        row.update(r)
+        rows.append(row)
+    # --- 시드 평균 + 같은 시드의 no_correction 대비 차이 ----------------
+    baseline: dict[tuple, dict[str, Any]] = {}
+    for r in rows:
+        if r["condition"] == "no_correction":
+            baseline[(r["wiring"], r["engine"], r["projection"], r["gate_rule"],
+                      r["seed"])] = r
+    agg: dict[tuple, dict[str, Any]] = {}
+    for r in rows:
+        key = (r["wiring"], r["engine"], r["projection"], r["gate_rule"], r["condition"])
+        a = agg.setdefault(key, {"acc": [], "ce": [], "dev": [], "d_acc": [], "d_dev": [],
+                                 "n_seeds": 0, "n_completed": 0, "statuses": []})
+        a["n_seeds"] += 1
+        a["statuses"].append(r["status"])
+        if r["status"] != "completed":
+            continue
+        a["n_completed"] += 1
+        a["acc"].append(r.get("test_accuracy"))
+        a["ce"].append(r.get("test_cross_entropy"))
+        a["dev"].append(r.get("dev_ce_last"))
+        b = baseline.get((r["wiring"], r["engine"], r["projection"], r["gate_rule"],
+                          r["seed"]))
+        if b is not None and b.get("status") == "completed":
+            if r.get("test_accuracy") is not None and b.get("test_accuracy") is not None:
+                a["d_acc"].append(r["test_accuracy"] - b["test_accuracy"])
+            if r.get("dev_ce_last") is not None and b.get("dev_ce_last") is not None:
+                a["d_dev"].append(r["dev_ce_last"] - b["dev_ce_last"])
+    aggregate = []
+    for (w, e, p, g, cond), a in agg.items():
+        m_acc, s_acc = _mean_sd(a["acc"])
+        m_dev, s_dev = _mean_sd(a["dev"])
+        m_da, s_da = _mean_sd(a["d_acc"])
+        m_dd, s_dd = _mean_sd(a["d_dev"])
+        aggregate.append({"wiring": w, "engine": e, "projection": p, "gate_rule": g,
+                          "condition": cond, "n_seeds": a["n_seeds"],
+                          "n_completed": a["n_completed"],
+                          "test_accuracy_mean": m_acc, "test_accuracy_sd": s_acc,
+                          "test_ce_mean": _mean_sd(a["ce"])[0],
+                          "dev_ce_last_mean": m_dev, "dev_ce_last_sd": s_dev,
+                          "delta_test_acc_vs_no_correction_mean": m_da,
+                          "delta_test_acc_vs_no_correction_sd": s_da,
+                          "delta_dev_ce_vs_no_correction_mean": m_dd,
+                          "delta_dev_ce_vs_no_correction_sd": s_dd,
+                          "statuses": sorted(set(a["statuses"]))})
+    # --- dev 기준 선택 (test 로 고르지 않는다) --------------------------
+    dev_choice: dict[str, Any] = {}
+    for cond in plan["conditions"]:
+        cand = [x for x in aggregate if x["condition"] == cond
+                and x["dev_ce_last_mean"] is not None]
+        if cand:
+            best = min(cand, key=lambda x: x["dev_ce_last_mean"])
+            dev_choice[cond] = {k: best[k] for k in ("wiring", "engine", "projection",
+                                                     "gate_rule", "dev_ce_last_mean",
+                                                     "test_accuracy_mean", "n_completed")}
+    counts: dict[str, int] = {}
+    for r in results.values():
+        counts[r["status"]] = counts.get(r["status"], 0) + 1
+    return {"format": SWEEP_FORMAT, "level": plan["level"], "preset": plan["preset"],
+            "seeds": plan["seeds"], "epochs": plan["epochs"],
+            "max_samples": plan["max_samples"],
+            "n_cells_total": plan["n_cells_total"],
+            "n_cells_executed": plan["n_cells_executed"],
+            "n_cells_shared": plan["n_cells_shared"],
+            "cell_status_counts": counts, "stages": stage_rows,
+            "rows": rows, "aggregate": aggregate, "dev_based_choice": dev_choice,
+            "sharing_rule_ko": plan["sharing_rule_ko"],
+            "selection_rule_ko": plan["selection_rule_ko"],
+            "note_ko": ("시드 수가 적으면 효과 부재나 동등성을 증명하지 않는다. "
+                        "delta 는 같은 배선·엔진·투영·gate·시드의 no_correction 대비 "
+                        "차이다. location_shuffled_matched 와 차이가 없으면 위치 정보의 "
+                        "기여를 주장하지 않는다.")}
+
+
 def _record_wiring_failure(method: Callable[..., Any]) -> Callable[..., Any]:
     """원래 예외를 보존하며 실패 상태와 이미 완료한 조건을 기록한다."""
     @wraps(method)
@@ -18193,6 +18742,72 @@ class ReportBuilder:
             A(f"- {comp.get('note_ko', '')}")
             A("")
 
+    def _report_sweep(self, A: Callable[[str], None]) -> None:
+        """14-K 전체 자동 조합 실행 절. sweep_summary.json 에서만 만든다."""
+        sm = self._load("sweep_summary.json")
+        if not isinstance(sm, dict) or sm.get("format") != SWEEP_FORMAT:
+            return
+        A("## 5-S. 전체 자동 조합 실행")
+        A("")
+        A(f"- 수준 **{sm.get('level')}**, preset {sm.get('preset')}, 시드 {sm.get('seeds')}, "
+          f"에폭 {sm.get('epochs')}, 학습 표본 상한 {sm.get('max_samples') or '없음'}")
+        A(f"- 상태 **{sm.get('status')}** {sm.get('reason', '')} / 소요 "
+          f"{sm.get('wall_time_s')} s")
+        A(f"- 학습 칸 {sm.get('n_cells_total')}개 = 실제 계산 {sm.get('n_cells_executed')}개 + "
+          f"결과 공유 {sm.get('n_cells_shared')}개. 칸 상태 {sm.get('cell_status_counts')}")
+        A(f"- {sm.get('sharing_rule_ko', '')}")
+        A(f"- {sm.get('selection_rule_ko', '')}")
+        A("")
+        A("### 단계")
+        A("")
+        A("| 단계 | 종류 | 상태 | 비고 |")
+        A("|---|---|---|---|")
+        for st in sm.get("stages", []):
+            note = ""
+            if st.get("kind") == "prechecks":
+                note = (f"통과 {st.get('n_passed')} / 실패 {st.get('n_failed')} / 측정만 "
+                        f"{st.get('n_measured')} {st.get('failed_checks') or ''}")
+            elif st.get("kind") == "contract":
+                note = f"계약 {st.get('contract_status')} {st.get('problems') or ''}"
+            elif st.get("kind") == "transmission":
+                note = f"첫 실패 지점 {st.get('first_failure')}"
+            elif st.get("kind") == "engine_cost":
+                note = f"순수 엔진 중앙값 {st.get('medians')}"
+            if st.get("error"):
+                note += f" 오류: {st['error']}"
+            A(f"| {st['stage_id']} | {st['kind']} | {st['status']} | {str(note)[:300]} |")
+        A("")
+        agg = sm.get("aggregate") or []
+        if agg:
+            A("### 교정 조합 (시드 평균, delta 는 같은 시드 no_correction 대비)")
+            A("")
+            A("| 배선 | 엔진 | 투영 | gate | 조건 | 완료/시드 | test 정확도 | dev CE (마지막) | "
+              "Δtest 정확도 | ΔdevCE |")
+            A("|---|---|---|---|---|---|---|---|---|---|")
+            for r in agg[:400]:
+                A(f"| {r['wiring']} | {r['engine']} | {r['projection']} | {r['gate_rule']} | "
+                  f"{r['condition']} | {r['n_completed']}/{r['n_seeds']} | "
+                  f"{_fmt_opt(r['test_accuracy_mean'])} ± {_fmt_opt(r['test_accuracy_sd'])} | "
+                  f"{_fmt_opt(r['dev_ce_last_mean'])} | "
+                  f"{_fmt_opt(r['delta_test_acc_vs_no_correction_mean'])} | "
+                  f"{_fmt_opt(r['delta_dev_ce_vs_no_correction_mean'])} |")
+            if len(agg) > 400:
+                A(f"| ... | 나머지 {len(agg) - 400}행은 sweep_aggregate.csv | | | | | | | | |")
+            A("")
+        ch = sm.get("dev_based_choice") or {}
+        if ch:
+            A("### dev 기준 선택 (test 로 고르지 않았다)")
+            A("")
+            A("| 조건 | 배선 | 엔진 | 투영 | gate | dev CE | 그 설정의 test 정확도 |")
+            A("|---|---|---|---|---|---|---|")
+            for cond, c in ch.items():
+                A(f"| {cond} | {c['wiring']} | {c['engine']} | {c['projection']} | "
+                  f"{c['gate_rule']} | {_fmt_opt(c['dev_ce_last_mean'])} | "
+                  f"{_fmt_opt(c['test_accuracy_mean'])} |")
+            A("")
+        A(f"- {sm.get('note_ko', '')}")
+        A("")
+
     def _report_inhibition(self, A: Callable[[str], None]) -> None:
         """억제 점진 복원 실험 절. **저장된 JSON/CSV 에서만** 만든다."""
         scan = self._load("inhibition_scan.json")
@@ -18504,6 +19119,7 @@ class ReportBuilder:
         self._report_wiring(A)
         self._report_inhibition(A)
         self._report_paired(A)
+        self._report_sweep(A)
         A("## 6. 가정 (ASSUMPTIONS)")
         A("")
         A("아래 표는 프로그램 안의 데이터이며 보고서마다 그대로 출력된다.")
@@ -19098,6 +19714,52 @@ def make_figures(run_dir: Path) -> list[str]:
             pth = fig_dir / "paired_correction_location.png"
             fig.savefig(pth, dpi=120); plt.close(fig)
             made.append(str(pth))
+
+    sw_path = run_dir / "sweep_summary.json"
+    if sw_path.is_file():
+        sw = read_json(sw_path)
+        agg = sw.get("aggregate") or []
+        if agg:
+            conds = [c for c in PAIRED_CONDITIONS if any(r["condition"] == c for r in agg)]
+            cfgs = sorted({(r["wiring"], r["engine"], r["projection"], r["gate_rule"])
+                           for r in agg})
+            for key, fname, title, unit in (
+                    ("test_accuracy_mean", "sweep_test_accuracy.png",
+                     L("test 정확도 (시드 평균)", "test accuracy (seed mean)"), "accuracy"),
+                    ("delta_test_acc_vs_no_correction_mean", "sweep_delta_vs_no_correction.png",
+                     L("같은 시드 no_correction 대비 test 정확도 차이",
+                       "test accuracy minus no_correction (same seed)"), "Δ accuracy"),
+                    ("dev_ce_last_mean", "sweep_dev_ce.png",
+                     L("dev CE (마지막 에폭, 선택 기준)", "dev CE (last epoch, selection)"),
+                     "cross entropy")):
+                mat = np.full((len(cfgs), len(conds)), np.nan)
+                for r in agg:
+                    v = r.get(key)
+                    if v is None or r["condition"] not in conds:
+                        continue
+                    mat[cfgs.index((r["wiring"], r["engine"], r["projection"],
+                                    r["gate_rule"])), conds.index(r["condition"])] = v
+                if not np.isfinite(mat).any():
+                    continue
+                fig, ax = plt.subplots(figsize=(1.2 * len(conds) + 4,
+                                                0.32 * len(cfgs) + 2.2))
+                im = ax.imshow(mat, aspect="auto", interpolation="nearest",
+                               cmap="RdBu" if key.startswith("delta") else "viridis")
+                ax.set_xticks(range(len(conds)))
+                ax.set_xticklabels(conds, rotation=30, ha="right", fontsize=7)
+                ax.set_yticks(range(len(cfgs)))
+                ax.set_yticklabels(["/".join(c) for c in cfgs], fontsize=6)
+                ax.set_title(title, fontsize=9)
+                fig.colorbar(im, ax=ax, label=unit)
+                fig.text(0.5, 0.005, L(f"빈칸 = 미완료. 수준 {sw.get('level')}, 시드 "
+                                       f"{sw.get('seeds')}. source=sweep_summary.json",
+                                       f"blank = not completed. level {sw.get('level')}, "
+                                       f"seeds {sw.get('seeds')}. source=sweep_summary.json"),
+                         ha="center", fontsize=6)
+                fig.tight_layout(rect=(0, 0.03, 1, 1))
+                pth = fig_dir / fname
+                fig.savefig(pth, dpi=120); plt.close(fig)
+                made.append(str(pth))
     if not made:
         have = sorted(f.name for f in run_dir.iterdir() if f.is_file())
         raise RuntimeError(
@@ -23442,9 +24104,11 @@ PAIRED_MENU_TEXT = """
   H. 비용 비교 D: 참조 다구획 엔진 vs 단순 LIF 엔진
   I. 저장된 결과로 보고서·그림 재생성
   J. 구현 구분표 (물리 뉴런 / 기능 연산자 / 미구현)
+  K. 전체 자동 조합 실행 (모든 신규 테스트를 스스로 조합, 중단 후 이어서 실행)
   0. 뒤로
 ------------------------------------------------------------------
   권장 순서: A(배선 선택) -> B(계약) -> C(사전 검사) -> F(전달) -> D/E(교정).
+  한 번에 전부 돌리려면 K (quick 으로 먼저 경로를 확인한 뒤 standard/full).
   L5/L6/L1 교정은 기능 연산자다. 실제 L5/L6 뉴런의 계산 결과가 아니다.
   형태/강도 분해는 근사이며 원인 뉴런의 정확한 검출을 보장하지 않는다.
 ------------------------------------------------------------------"""
@@ -24029,8 +24693,78 @@ class KoreanMenu:
                            {"rows": rows, "version": __version__})
                 _write_rows_csv(rd / "implementation_table.csv", rows)
                 print(f"\n저장: {rd}")
+            elif sub == "K":
+                self._paired_sweep_menu(cfg, out)
             else:
-                print(f"  '{sub}' 은(는) 없는 선택이다. A~J 또는 0 을 고르라.")
+                print(f"  '{sub}' 은(는) 없는 선택이다. A~K 또는 0 을 고르라.")
+
+    def _paired_sweep_menu(self, cfg: dict[str, Any], out: Path) -> None:
+        """14-K: 모든 신규 테스트를 조합해 자동으로 실행한다."""
+        print("\n  [전체 자동 조합 실행]")
+        print("  순서: 사전 검사 P1~P16 -> 배선별 연결 계약 -> 전달 비교 -> 엔진 비용 -> "
+              "억제 진단 -> 교정 학습 전체 조합 -> 요약·보고서·그림")
+        print("  이 작업은 현재 preset/seed/학습 설정을 바탕으로 배선·엔진·투영·gate·조건·"
+              "시드를 스스로 조합한다 (14-A 의 배선 선택과 무관).")
+        resume = _ask("이어서 실행할 조합 폴더 (비우면 새로 시작)", "")
+        if resume:
+            rd = clean_user_path(resume)
+            if not (rd / "sweep_plan.json").is_file():
+                print(f"  조합 실행 폴더가 아니다 (sweep_plan.json 없음): {rd}")
+                return
+            plan = read_json(rd / "sweep_plan.json")
+            left = len({c["effective_key"] for c in plan["cells"]})
+            print(f"  수준 {plan['level']}, 학습 칸 {left}개 중 끝난 칸은 건너뛴다.")
+            res = run_full_sweep(cfg, None, self.device_choice, resume_dir=rd,
+                                 progress=lambda m: print(f"  … {m}"))
+        else:
+            for name, lv in SWEEP_LEVELS.items():
+                p = plan_sweep(cfg, name)
+                print(f"    {name:9s} 학습 칸 {p['n_cells_total']:5d}개 (실제 계산 "
+                      f"{p['n_cells_executed']}개, 결과 공유 {p['n_cells_shared']}개), "
+                      f"단계 {len(p['stages'])}개 - {lv['note_ko']}")
+            level = _ask("조합 수준 quick / standard / full", "standard").strip()
+            if level not in SWEEP_LEVELS:
+                print(f"  '{level}' 은(는) 없는 수준이다.")
+                return
+            raw_seeds = _ask("시드 목록 (쉼표, 비우면 수준 기본값)", "")
+            seeds = ([int(x) for x in raw_seeds.split(",") if x.strip()]
+                     if raw_seeds else None)
+            raw_ep = _ask("학습 칸마다 에폭 수 (비우면 수준 기본값)", "")
+            plan = plan_sweep(cfg, level, seeds=seeds,
+                              epochs=int(raw_ep) if raw_ep else None)
+            lv = plan["level_definition"]
+            print(f"\n  계획: 배선 {[w for w, _ in lv['wiring']]} x 엔진 {lv['engines']} x "
+                  f"투영 {lv['projections']} x gate {lv['gate_rules']} x 조건 "
+                  f"{len(plan['conditions'])} x 시드 {plan['seeds']}")
+            print(f"  학습 칸 {plan['n_cells_total']}개 -> 실제 계산 {plan['n_cells_executed']}"
+                  f"개 (같을 수밖에 없는 {plan['n_cells_shared']}개는 결과 공유), 에폭 "
+                  f"{plan['epochs']}, 학습 표본 상한 {plan['max_samples'] or '없음'}")
+            print(f"  {plan['sharing_rule_ko']}")
+            print(f"  {plan['selection_rule_ko']}")
+            print("  실행 시간은 실행 중 측정한 칸 평균으로만 추정해 보여 준다. Ctrl+C 로 "
+                  "멈추면 같은 폴더를 넣어 이어서 실행할 수 있다.")
+            if level == "full":
+                if _ask("full 은 매우 오래 걸린다. 진행하려면 yes 입력", "").strip() != "yes":
+                    print("  취소했다.")
+                    return
+            elif _ask("시작할까? (y/N)", "N").strip().lower() not in ("y", "yes"):
+                print("  취소했다.")
+                return
+            stop = _ask("사전 검사가 실패하면 학습 칸을 건너뛸까? (y/N)", "N").strip().lower()
+            res = run_full_sweep(cfg, out, self.device_choice, level=level, seeds=seeds,
+                                 epochs=int(raw_ep) if raw_ep else None,
+                                 stop_on_precheck_failure=stop in ("y", "yes"),
+                                 progress=lambda m: print(f"  … {m}"))
+        print(f"\n  상태 {res['status']} {res.get('reason', '')}")
+        print(f"  학습 칸 상태: {res['cell_status_counts']}")
+        for st in res["stages"]:
+            print(f"    [{st['status']:>19s}] {st['stage_id']}")
+        for cond, ch in res.get("dev_based_choice", {}).items():
+            print(f"    dev 기준 {cond:26s}: {ch['wiring']}/{ch['engine']}/"
+                  f"{ch['projection']}/{ch['gate_rule']} dev CE "
+                  f"{_fmt_opt(ch['dev_ce_last_mean'])}")
+        print(f"\n결과: {res['root']}")
+        print("  요약: sweep_summary.csv (칸별), sweep_aggregate.csv (시드 평균), report_ko.md")
 
     # ------------------------------------------------------------------
     def wiring_menu(self, cfg: dict[str, Any], out: Path) -> None:
@@ -24400,7 +25134,7 @@ CLI_MODES: tuple[str, ...] = (
     "wiring-diagnose", "wiring-compare", "wiring-bundle", "wiring-integrity",
     # ---- 4.0 대응 배선 · 순차 이중 교정 (새로 추가) ----
     "paired-contract", "paired-integrity", "paired-transmission", "paired-train",
-    "paired-compare", "engine-compare",
+    "paired-compare", "engine-compare", "paired-sweep",
 )
 
 #: 4.0 옵션이 의미를 갖는 모드. 의미 없는 곳에 주면 조용히 무시하지 않고 막는다.
@@ -24411,6 +25145,13 @@ PAIRED_OPTION_MODES: dict[str, tuple[str, ...]] = {
     "paired_seeds": ("paired-compare",),
     "compare_wiring_modes": ("paired-transmission",),
     "compare_budget_modes": ("paired-transmission",),
+    "sweep_level": ("paired-sweep",),
+    "sweep_seeds": ("paired-sweep",),
+    "sweep_epochs": ("paired-sweep",),
+    "sweep_max_samples": ("paired-sweep",),
+    "sweep_conditions": ("paired-sweep",),
+    "resume_sweep": ("paired-sweep",),
+    "sweep_stop_on_precheck_fail": ("paired-sweep",),
 }
 PAIRED_MODEL_OPTION_EXCLUDED: tuple[str, ...] = ("env", "report", "resume",
                                                  "inspect-neuron")
@@ -24461,8 +25202,13 @@ def _paired_help_epilog() -> str:
         "\"D:\\CortexResults\"\n"
         f"  python {n} --mode engine-compare --preset hierarchy_small --wiring-mode "
         "paired_only --device cuda --output \"D:\\CortexResults\"\n"
+        f"  python {n} --mode paired-sweep --preset hierarchy_small --sweep-level quick "
+        "--device cuda --output \"D:\\CortexResults\"\n"
+        f"  python {n} --mode paired-sweep --resume-sweep "
+        "\"D:\\CortexResults\\paired_sweep_standard_...\"\n"
         "메뉴 14 대응: B=paired-contract, C=paired-integrity, D=paired-train, "
-        "E=paired-compare, F=paired-transmission, H=engine-compare, I=report.\n"
+        "E=paired-compare, F=paired-transmission, H=engine-compare, I=report, "
+        "K=paired-sweep.\n"
         f"이중 교정 조건: {', '.join(PAIRED_CONDITIONS)}\n")
 
 
@@ -24682,6 +25428,22 @@ def build_parser() -> argparse.ArgumentParser:
                     help="L3 형태 교정 -> L2 투영 방법 (기본 restorer_difference)")
     gp.add_argument("--gate-rule", choices=PAIRED_GATE_RULES, default=None,
                     help="교사 gate 규칙 (기본 argmax_wrong)")
+    gs = p.add_argument_group(
+        "전체 자동 조합 실행 (paired-sweep)",
+        "사전 검사 -> 계약 -> 전달 -> 엔진 비용 -> 억제 진단 -> 교정 학습 전체 조합을 "
+        "순서대로 실행한다. 중단 후 --resume-sweep 으로 이어서 실행한다.")
+    gs.add_argument("--sweep-level", choices=tuple(SWEEP_LEVELS), default=None,
+                    help="조합 수준 (기본 standard). quick 으로 경로를 먼저 확인하라")
+    gs.add_argument("--sweep-seeds", default=None, help="시드 목록 (쉼표). 기본은 수준값")
+    gs.add_argument("--sweep-epochs", type=int, default=None, help="학습 칸마다 에폭 수")
+    gs.add_argument("--sweep-max-samples", type=int, default=None,
+                    help="학습 칸마다 train 표본 상한 (0 이면 전체)")
+    gs.add_argument("--sweep-conditions", default=None,
+                    help="조건 목록 (쉼표). 기본은 7개 전부")
+    gs.add_argument("--resume-sweep", default=None,
+                    help="이어서 실행할 조합 폴더 (sweep_plan.json 이 있는 폴더)")
+    gs.add_argument("--sweep-stop-on-precheck-fail", action="store_true", default=None,
+                    help="사전 검사가 실패하면 학습 칸을 건너뛴다 (기본: 기록하고 계속)")
     return p
 
 
@@ -24970,8 +25732,17 @@ def _check_paired_option_modes(args: argparse.Namespace) -> None:
             if getattr(args, attr, None) is not None:
                 bad.append(f"--{attr.replace('_', '-')} (모드 {mode} 는 저장된 설정을 "
                            f"쓰거나 계산하지 않는다)")
+    if mode == "paired-sweep":
+        for attr in ("wiring_mode", "engine_kind", "budget_mode", "l3_to_l2", "gate_rule"):
+            if getattr(args, attr, None) is not None:
+                bad.append(f"--{attr.replace('_', '-')} (paired-sweep 은 이 축을 스스로 "
+                           f"조합한다. 줄이려면 --sweep-level quick)")
     if bad:
         raise SystemExit("옵션과 모드가 맞지 않는다: " + "; ".join(bad))
+    if getattr(args, "sweep_epochs", None) is not None and int(args.sweep_epochs) < 1:
+        raise SystemExit("--sweep-epochs 는 1 이상이다")
+    if getattr(args, "sweep_max_samples", None) is not None and int(args.sweep_max_samples) < 0:
+        raise SystemExit("--sweep-max-samples 는 0 이상이다")
     if getattr(args, "fanin_kmax", None) is not None and int(args.fanin_kmax) < 1:
         raise SystemExit("--fanin-kmax 는 1 이상이다")
     if getattr(args, "fanin_r0", None) is not None and not float(args.fanin_r0) > 0:
@@ -25180,6 +25951,30 @@ def run_cli(args: argparse.Namespace) -> int:
         res = run_engine_cost_compare(cfg, _need_output(args), args.device, progress=say)
         print(f"결과: {res['root']}")
         return 0
+    if args.mode == "paired-sweep":
+        seeds = (_parse_int_list(args.sweep_seeds, name="--sweep-seeds")
+                 if args.sweep_seeds else None)
+        conds = ([c.strip() for c in str(args.sweep_conditions).split(",") if c.strip()]
+                 if args.sweep_conditions else None)
+        if args.resume_sweep:
+            res = run_full_sweep(cfg, None, args.device,
+                                 resume_dir=clean_user_path(args.resume_sweep), progress=say)
+        else:
+            level = str(args.sweep_level or "standard")
+            plan = plan_sweep(cfg, level, seeds=seeds, epochs=args.sweep_epochs,
+                              max_samples=args.sweep_max_samples, conditions=conds)
+            print(f"조합 수준 {level}: 학습 칸 {plan['n_cells_total']}개 (실제 계산 "
+                  f"{plan['n_cells_executed']}, 결과 공유 {plan['n_cells_shared']}), "
+                  f"단계 {len(plan['stages'])}개")
+            res = run_full_sweep(cfg, _need_output(args), args.device, level=level,
+                                 seeds=seeds, epochs=args.sweep_epochs,
+                                 max_samples=args.sweep_max_samples, conditions=conds,
+                                 stop_on_precheck_failure=bool(
+                                     args.sweep_stop_on_precheck_fail),
+                                 progress=say)
+        print(f"상태 {res['status']} {res.get('reason', '')} / 칸 {res['cell_status_counts']}")
+        print(f"결과: {res['root']}")
+        return 0 if res["status"] == "completed" else 1
     if args.mode == "wiring-integrity":
         out = _need_output(args)
         runner = _runner(output_root=out)
