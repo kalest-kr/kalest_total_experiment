@@ -2,6 +2,19 @@
 # -*- coding: utf-8 -*-
 """visual_cortex_gpu_4_paired_dual_feedback.py -- 대응 배선과 순차 이중 교정 (4.0).
 
+4.0.2 수정 안내 (체크포인트)
+---------------------------
+* 조합 실행에서 준비 산출물을 재사용한 학습 칸은 자기 ``checkpoints`` 폴더에
+  ``preparation_state.json`` 이 없어, 체크포인트 meta 가 가리키는 파일이 없고 그 칸을
+  재개할 수 없었다. 이제 재사용할 때도 칸마다 사본을 저장한다.
+* 학습 칸이 끝나면 콘솔에 체크포인트 개수와 폴더를 표시하고, 진행 기록·요약 표에
+  ``n_checkpoints`` / ``last_checkpoint`` 를 남긴다. INSUFFICIENT_SIGNAL (준비 단계에서
+  IT L3 신호 부족 -> 학습 미시작 -> 체크포인트 없음) 은 원인 파일과 함께 따로 알린다.
+* 단계 0~4 는 체크포인트를 만들지 않는다는 안내를 조합 실행 시작 때 표시한다.
+* 한 (배선, 엔진, 시드) 묶음의 준비가 INSUFFICIENT_SIGNAL 이면 같은 묶음의 나머지
+  칸은 준비를 다시 돌리지 않고 insufficient_signal (``insufficient_from`` 에 원래 칸)
+  으로 기록한다. 준비는 묶음 안에서 공유한다는 기존 규칙을 따른 것이다.
+
 4.0.1 수정 안내
 --------------
 * 조합 실행(14-K)의 이중 교정 학습 칸이 첫 episode 직후 ``KeyError: 'areas'`` 로
@@ -288,7 +301,7 @@ from typing import Any, Callable, Sequence
 
 import numpy as np
 
-__version__ = "4.0.1"
+__version__ = "4.0.2"
 # 4.0: 대응 배선(L4->L2->L3->다음 L4), 주변부 수렴, L5/L6/L1 순차 이중 교정 (메뉴 14).
 #      legacy 배선 모드는 3.2.2 와 같은 규칙·난수 스트림을 쓴다.
 # 3.1: 메뉴 12로 실제 다구획/스파이크 전달을 train-only 초기화한다.
@@ -13173,9 +13186,18 @@ class PairedExperimentMixin:
             self.cfg, self.network, self.seeds,
             log=(self.recorder.log if self.recorder is not None else None))
         if reuse is not None:
-            info = self.calibration.load_state_dict(read_json(Path(reuse)))
+            state = read_json(Path(reuse))
+            info = self.calibration.load_state_dict(state)
             info["status"] = "reused"
             info["source"] = str(reuse)
+            # 재사용한 칸도 자기 checkpoints 폴더에 준비 산출물 사본을 둔다. 그래야
+            # 이 칸의 미니배치 체크포인트만으로 재개·추론할 수 있다 (meta 의
+            # preparation_file 이 가리키는 파일이 실제로 있다).
+            if self.run_dir is not None:
+                local = self.run_dir / "checkpoints" / "preparation_state.json"
+                if local.resolve() != Path(reuse).resolve():
+                    write_json(local, state)
+                info["local_copy"] = str(local)
         else:
             n_cfg = int(self.cfg["readout_prep"]["n_preparation_samples"])
             train = list(self.splits["train"])
@@ -14034,6 +14056,10 @@ def run_full_sweep(base_cfg: dict[str, Any], output_root: Path | None, device_ch
 
     try:
         # ---------------- 단계 0~4 ------------------------------------------
+        say("[안내] 단계 0~4 (사전 검사·연결 계약·전달 비교·엔진 비용·억제 진단)는 "
+            "체크포인트를 만들지 않는다. 체크포인트는 단계 5 학습 칸에서 "
+            f"{root / 'cells'}/<칸>/checkpoints/eEEE_bBBBBB.json+.npz 로 "
+            "미니배치마다 생긴다.")
         for stage in plan["stages"]:
             sid = stage["stage_id"]
             if done.get(sid, {}).get("status") in finished:
@@ -14112,9 +14138,16 @@ def run_full_sweep(base_cfg: dict[str, Any], output_root: Path | None, device_ch
             measured: list[float] = []
             repeat_err, repeat_n = "", 0
             prep_by_group: dict[str, Path] = {}
+            #: 준비가 INSUFFICIENT_SIGNAL 로 끝난 (배선, 엔진, 시드) 묶음. 준비는 묶음 안에서
+            #: 같다고 보고 공유하므로, 같은 준비를 칸마다 다시 돌려 같은 결과를 얻지 않는다.
+            insufficient_group: dict[str, str] = {}
             for row in done.values():
                 if row.get("kind") == "train" and row.get("preparation_file"):
                     prep_by_group.setdefault(row["prep_group"], Path(row["preparation_file"]))
+                if (row.get("kind") == "train" and row.get("prep_group")
+                        and row.get("status") == STATUS_INSUFFICIENT_SIGNAL):
+                    insufficient_group.setdefault(row["prep_group"],
+                                                  row.get("insufficient_from") or row["id"])
             for i, c in enumerate(todo):
                 group = f"{c['wiring']}|{c['engine']}|{c['seed']}"
                 n_done = n_total - len(todo) + i
@@ -14124,6 +14157,17 @@ def run_full_sweep(base_cfg: dict[str, Any], output_root: Path | None, device_ch
                            f"{np.mean(measured) * (len(todo) - i) / 60:.1f}분 (추정)")
                 say(f"[학습 {n_done + 1}/{n_total}] {c['effective_key']}{eta}")
                 t0 = time.time()
+                if group in insufficient_group and group not in prep_by_group:
+                    src = insufficient_group[group]
+                    record(c["cell_id"], "train", STATUS_INSUFFICIENT_SIGNAL, None, t0,
+                           effective_key=c["effective_key"], prep_group=group,
+                           insufficient_from=src, n_checkpoints=0, last_checkpoint=None,
+                           note_ko=("같은 (배선, 엔진, 시드) 묶음의 준비 단계가 칸 "
+                                    f"{src} 에서 INSUFFICIENT_SIGNAL 로 끝나 학습을 시작하지 "
+                                    "않았다. 준비는 묶음 안에서 공유하므로 다시 계산하지 않았다."))
+                    say(f"  {STATUS_UPPER[STATUS_INSUFFICIENT_SIGNAL]}: 같은 묶음의 준비가 "
+                        f"칸 {src} 에서 신호 부족 -> 이 칸은 학습·체크포인트 없음 (재계산 안 함)")
+                    continue
                 out = _attempt_dir(root / "cells" / c["cell_id"])
                 try:
                     cfg = _sweep_cfg(base_cfg, c["wiring_mode"], c["budget_mode"],
@@ -14134,6 +14178,9 @@ def run_full_sweep(base_cfg: dict[str, Any], output_root: Path | None, device_ch
                     reuse = prep_by_group.get(group)
                     if reuse is not None and not reuse.is_file():
                         reuse = None
+                    if reuse is None:
+                        say("  준비 단계(판독기·복원기 보정)부터 시작한다. 이 단계가 끝나고 "
+                            "첫 미니배치가 끝나야 첫 체크포인트가 생긴다.")
                     res = runner.run_paired_train(condition=c["condition"],
                                                   epochs=int(plan["epochs"]),
                                                   max_samples=int(plan["max_samples"]),
@@ -14145,10 +14192,22 @@ def run_full_sweep(base_cfg: dict[str, Any], output_root: Path | None, device_ch
                     prep_file = out / "checkpoints" / "preparation_state.json"
                     if reuse is None and prep_file.is_file():
                         prep_by_group[group] = prep_file
+                    cks = _cell_checkpoints(out)
                     record(c["cell_id"], "train", st, out, t0,
                            effective_key=c["effective_key"], prep_group=group,
                            preparation_file=str(prep_by_group.get(group) or ""),
-                           reused_preparation=str(reuse) if reuse else None)
+                           reused_preparation=str(reuse) if reuse else None,
+                           n_checkpoints=len(cks),
+                           last_checkpoint=str(cks[-1]) if cks else None)
+                    if st == STATUS_INSUFFICIENT_SIGNAL:
+                        if reuse is None:
+                            insufficient_group.setdefault(group, c["cell_id"])
+                        say(f"  {STATUS_UPPER[st]}: 준비 단계에서 IT L3 까지 신호가 도착하지 "
+                            f"않아 학습을 시작하지 않았다 -> 체크포인트 없음. "
+                            f"원인: {out / 'preparation.json'}")
+                    else:
+                        say(f"  {st}: 체크포인트 {len(cks)}개 "
+                            f"({out / 'checkpoints'})")
                     if st == "interrupted":
                         status, reason = "interrupted", "사용자 중단 (칸 내부)"
                         break
@@ -14158,8 +14217,11 @@ def run_full_sweep(base_cfg: dict[str, Any], output_root: Path | None, device_ch
                            effective_key=c["effective_key"], prep_group=group)
                     raise
                 except Exception as exc:
+                    cks = _cell_checkpoints(out)
                     record(c["cell_id"], "train", "failed", out, t0,
                            effective_key=c["effective_key"], prep_group=group,
+                           n_checkpoints=len(cks),
+                           last_checkpoint=str(cks[-1]) if cks else None,
                            error=f"{type(exc).__name__}: {exc}",
                            traceback=traceback.format_exc())
                     err = f"{type(exc).__name__}: {exc}"
@@ -14208,6 +14270,16 @@ def _mean_sd(vals: Sequence[float]) -> tuple[float | None, float | None]:
     return float(np.mean(v)), (float(np.std(v, ddof=1)) if len(v) >= 2 else None)
 
 
+def _cell_checkpoints(cell_dir: Path | str | None) -> list[Path]:
+    """학습 칸의 미니배치 체크포인트 (json+npz 쌍). 준비 산출물 파일은 세지 않는다."""
+    if not cell_dir:
+        return []
+    ck = Path(cell_dir) / "checkpoints"
+    if not ck.is_dir():
+        return []
+    return sorted(p for p in ck.glob("e*_b*.json") if p.with_suffix(".npz").is_file())
+
+
 def build_sweep_summary(root: Path) -> dict[str, Any]:
     """저장된 파일만 읽어 조합 요약을 만든다 (재실행 없음, PyTorch 불필요)."""
     root = Path(root)
@@ -14229,7 +14301,9 @@ def build_sweep_summary(root: Path) -> dict[str, Any]:
         res: dict[str, Any] = {"cell_id": c["cell_id"],
                                "status": row.get("status", STATUS_NOT_RUN),
                                "elapsed_s": row.get("elapsed_s"),
-                               "error": row.get("error"), "dir": row.get("dir")}
+                               "error": row.get("error"), "dir": row.get("dir"),
+                               "n_checkpoints": len(_cell_checkpoints(row.get("dir"))),
+                               "insufficient_from": row.get("insufficient_from")}
         path = Path(row["dir"]) / "paired_train.json" if row.get("dir") else None
         if path is not None and path.is_file():
             pt = read_json(path)
