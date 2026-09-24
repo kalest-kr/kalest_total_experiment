@@ -2,6 +2,19 @@
 # -*- coding: utf-8 -*-
 """visual_cortex_gpu_4_paired_dual_feedback.py -- 대응 배선과 순차 이중 교정 (4.0).
 
+4.0.1 수정 안내
+--------------
+* 조합 실행(14-K)의 이중 교정 학습 칸이 첫 episode 직후 ``KeyError: 'areas'`` 로
+  모두 실패하던 결함을 고쳤다. 교정 위치 지표 함수가 반복 기록의 ``areas`` 키를
+  가정했는데 새 episode 기록에는 그 키가 없었다. 이제 반복 기록에 영역별 과잉/부족
+  요약을 남기고, 지표 함수도 키가 없을 때 멈추지 않는다.
+* 학습 칸 안의 예외는 failed + traceback 으로 paired_train.json / failure.json 에
+  남기고 기록기를 닫는다.
+* 같은 오류가 학습 칸 5개에서 연속으로 나면 조합 실행을 스스로 멈춘다.
+* 진행 기록에 칸별 코드 해시를 남기고, 다른 코드로 실행한 칸이 섞이면 알린다.
+* 이미 돌던 조합 폴더는 14-K 에서 같은 폴더를 넣으면 완료된 단계는 건너뛰고
+  실패한 학습 칸부터 다시 돈다.
+
 4.0.0 안내 (대응 배선 · L5/L6/L1 이중 교정)
 -----------------------------------------
 기준: visual_cortex_gpu_3_2_1_wiring_fixed.py (내부 버전 3.2.2, SHA256
@@ -275,7 +288,7 @@ from typing import Any, Callable, Sequence
 
 import numpy as np
 
-__version__ = "4.0.0"
+__version__ = "4.0.1"
 # 4.0: 대응 배선(L4->L2->L3->다음 L4), 주변부 수렴, L5/L6/L1 순차 이중 교정 (메뉴 14).
 #      legacy 배선 모드는 3.2.2 와 같은 규칙·난수 스트림을 쓴다.
 # 3.1: 메뉴 12로 실제 다구획/스파이크 전달을 train-only 초기화한다.
@@ -12463,6 +12476,12 @@ class PairedDualFeedbackNetwork(RecurrentCortexNetwork):
                                          round_id=2 * it)
             last_packets = packets
             any_needed = any(bool(p["needs_total"].any()) for p in packets.values())
+            # 기존 보고 경로(교정 위치 지도)와 같은 모양의 영역 요약. 총 교정 e_total 기준.
+            rec["areas"] = {a: {"n_excess": int((p["e_total"] > 0).sum()),
+                                "n_deficit": int((p["e_total"] < 0).sum()),
+                                "needs_total_fraction": float(
+                                    p["needs_total"].to(self.dtype).mean())}
+                            for a, p in packets.items()}
             rec["packets"] = {a: {"needs_total_fraction": float(p["needs_total"].float().mean()),
                                   "valid_fraction": float(p["valid"].float().mean()),
                                   "decomposition_residual_max": p["decomposition_residual_max"],
@@ -13376,6 +13395,14 @@ class PairedExperimentMixin:
         except RecordingBudgetExceeded as exc:
             status, reason = "interrupted", str(exc)
             rec.error("기록 예산 초과로 안전하게 중단", exc)
+        except Exception as exc:                          # noqa: BLE001
+            # 프로그램 결함일 수 있다. 숨기지 않고 원래 예외와 traceback 을 남긴다.
+            status, reason = "failed", f"{type(exc).__name__}: {exc}"
+            failure_traceback = traceback.format_exc()
+            rec.error("episode 처리 중 예외", exc, traceback=failure_traceback)
+            write_json(self.run_dir / "failure.json",
+                       {"status": "failed", "error": reason,
+                        "traceback": failure_traceback, "code": source_hash()})
         prep_sig_after = self.calibration.signatures()
         fixed_after = model.verify_fixed_unchanged()
         test = {"status": STATUS_NOT_RUN,
@@ -13946,6 +13973,7 @@ def run_full_sweep(base_cfg: dict[str, Any], output_root: Path | None, device_ch
                    conditions: Sequence[str] | None = None,
                    resume_dir: Path | None = None, retry_failed: bool = True,
                    stop_on_precheck_failure: bool = False,
+                   max_repeated_failures: int = 5,
                    progress: Callable[[str], None] | None = None) -> dict[str, Any]:
     """모든 신규 테스트를 조합해 순서대로 실행한다. **사용자가 고를 때만** 실행된다.
 
@@ -13982,6 +14010,13 @@ def run_full_sweep(base_cfg: dict[str, Any], output_root: Path | None, device_ch
         "config_sha256": config_hash(base_cfg), "level": plan["level"],
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
     done = _read_progress(root)
+    code_now = source_hash().get("sha256", "")
+    old_codes = sorted({r.get("code_sha256") or "unknown_before_4.0.1"
+                        for r in done.values()
+                        if r.get("code_sha256") != code_now})
+    if old_codes:
+        say(f"[알림] 이전 기록은 다른 코드 버전({[c[:12] for c in old_codes]})으로 실행됐다. "
+            f"지금 코드 {code_now[:12]}. 칸마다 실행한 코드 해시를 남기고 요약에 표시한다.")
     finished = {"completed", STATUS_INSUFFICIENT_SIGNAL}
     if not retry_failed:
         finished |= {"failed"}
@@ -13990,7 +14025,7 @@ def run_full_sweep(base_cfg: dict[str, Any], output_root: Path | None, device_ch
 
     def record(item_id: str, kind: str, st: str, out_dir: Path | None, t0: float,
                **extra: Any) -> None:
-        row = {"id": item_id, "kind": kind, "status": st,
+        row = {"id": item_id, "kind": kind, "status": st, "code_sha256": code_now,
                "dir": (str(out_dir) if out_dir is not None else None),
                "elapsed_s": round(time.time() - t0, 3),
                "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), **extra}
@@ -14075,6 +14110,7 @@ def run_full_sweep(base_cfg: dict[str, Any], output_root: Path | None, device_ch
                     if done.get(c["cell_id"], {}).get("status") not in finished]
             n_total = len(executed)
             measured: list[float] = []
+            repeat_err, repeat_n = "", 0
             prep_by_group: dict[str, Path] = {}
             for row in done.values():
                 if row.get("kind") == "train" and row.get("preparation_file"):
@@ -14103,6 +14139,9 @@ def run_full_sweep(base_cfg: dict[str, Any], output_root: Path | None, device_ch
                                                   max_samples=int(plan["max_samples"]),
                                                   reuse_preparation=reuse)
                     st = str(res.get("status"))
+                    if st == "failed":
+                        raise RuntimeError(str(res.get("reason") or "학습 칸 실패"))
+                    repeat_err, repeat_n = "", 0
                     prep_file = out / "checkpoints" / "preparation_state.json"
                     if reuse is None and prep_file.is_file():
                         prep_by_group[group] = prep_file
@@ -14123,7 +14162,18 @@ def run_full_sweep(base_cfg: dict[str, Any], output_root: Path | None, device_ch
                            effective_key=c["effective_key"], prep_group=group,
                            error=f"{type(exc).__name__}: {exc}",
                            traceback=traceback.format_exc())
-                    say(f"  실패: {type(exc).__name__}: {exc} (다음 칸으로 계속)")
+                    err = f"{type(exc).__name__}: {exc}"
+                    repeat_n = repeat_n + 1 if err == repeat_err else 1
+                    repeat_err = err
+                    say(f"  실패: {err} (다음 칸으로 계속)")
+                    if max_repeated_failures and repeat_n >= int(max_repeated_failures):
+                        status = "stopped_repeated_failure"
+                        reason = (f"같은 오류가 학습 칸 {repeat_n}개에서 연속으로 났다: {err}. "
+                                  "프로그램 결함이나 환경 문제일 수 있어 남은 칸을 돌리지 않고 "
+                                  "멈췄다. 원인을 고친 뒤 같은 폴더로 이어서 실행하면 실패한 "
+                                  "칸부터 다시 돈다.")
+                        say(f"[중단] {reason}")
+                        break
                 finally:
                     _free_device_memory()
     except KeyboardInterrupt:
@@ -14268,6 +14318,12 @@ def build_sweep_summary(root: Path) -> dict[str, Any]:
     counts: dict[str, int] = {}
     for r in results.values():
         counts[r["status"]] = counts.get(r["status"], 0) + 1
+    code_versions = sorted({r.get("code_sha256") or "unknown_before_4.0.1"
+                            for r in done.values()})
+    errors: dict[str, int] = {}
+    for r in done.values():
+        if r.get("status") == "failed" and r.get("error"):
+            errors[r["error"][:200]] = errors.get(r["error"][:200], 0) + 1
     return {"format": SWEEP_FORMAT, "level": plan["level"], "preset": plan["preset"],
             "seeds": plan["seeds"], "epochs": plan["epochs"],
             "max_samples": plan["max_samples"],
@@ -14275,6 +14331,9 @@ def build_sweep_summary(root: Path) -> dict[str, Any]:
             "n_cells_executed": plan["n_cells_executed"],
             "n_cells_shared": plan["n_cells_shared"],
             "cell_status_counts": counts, "stages": stage_rows,
+            "code_versions": code_versions,
+            "mixed_code_versions": len(code_versions) > 1,
+            "failure_messages": errors,
             "rows": rows, "aggregate": aggregate, "dev_based_choice": dev_choice,
             "sharing_rule_ko": plan["sharing_rule_ko"],
             "selection_rule_ko": plan["selection_rule_ko"],
@@ -17043,7 +17102,7 @@ class ExperimentRunner(PairedExperimentMixin):
         rounds = episode.get("rounds") or []
         if not rounds:
             return {"status": STATUS_NOT_RUN, "reason_ko": "round 기록이 없다"}
-        last = rounds[-1]["areas"]
+        last = rounds[-1].get("areas") or {}
         h, w = int(er.shape[1]), int(er.shape[2])
         out: dict[str, Any] = {"status": "completed", "n_samples": int(er.shape[0]),
                                "areas": {}}
@@ -18757,6 +18816,12 @@ class ReportBuilder:
           f"결과 공유 {sm.get('n_cells_shared')}개. 칸 상태 {sm.get('cell_status_counts')}")
         A(f"- {sm.get('sharing_rule_ko', '')}")
         A(f"- {sm.get('selection_rule_ko', '')}")
+        if sm.get("mixed_code_versions"):
+            A(f"- **주의**: 여러 코드 버전으로 실행된 칸이 섞여 있다 "
+              f"{[c[:12] for c in sm.get('code_versions', [])]}. 칸별 코드 해시는 "
+              "sweep_progress.jsonl 에 있다.")
+        for msg, n in (sm.get("failure_messages") or {}).items():
+            A(f"- 실패 {n}회: `{msg}`")
         A("")
         A("### 단계")
         A("")
@@ -24756,6 +24821,8 @@ class KoreanMenu:
                                  stop_on_precheck_failure=stop in ("y", "yes"),
                                  progress=lambda m: print(f"  … {m}"))
         print(f"\n  상태 {res['status']} {res.get('reason', '')}")
+        for msg, n in (res.get("failure_messages") or {}).items():
+            print(f"  실패 {n}회: {msg}")
         print(f"  학습 칸 상태: {res['cell_status_counts']}")
         for st in res["stages"]:
             print(f"    [{st['status']:>19s}] {st['stage_id']}")
