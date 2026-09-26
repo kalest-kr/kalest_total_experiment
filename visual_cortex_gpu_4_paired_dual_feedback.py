@@ -2,6 +2,14 @@
 # -*- coding: utf-8 -*-
 """visual_cortex_gpu_4_paired_dual_feedback.py -- 대응 배선과 순차 이중 교정 (4.0).
 
+4.0.3 수정 안내 (Ctrl+C)
+-----------------------
+* Windows 에서 Ctrl+C 가 늦게 먹거나 먹지 않는 것처럼 보이던 문제를 줄였다. 기록기의
+  시간 제한 없는 대기(queue.put / queue.join)는 Windows 에서 Ctrl+C 로 깨어나지 않았다.
+  이제 짧은 시간 제한 대기를 반복한다.
+* 조합 실행을 멈추면 즉시 "[중단 요청 받음]" 을 표시한다. 그 뒤 요약·보고서·그림을
+  만드는 동안 Ctrl+C 를 한 번 더 누르면 요약을 건너뛰고 바로 끝난다 (진행 기록은 보존).
+
 4.0.2 수정 안내 (체크포인트)
 ---------------------------
 * 조합 실행에서 준비 산출물을 재사용한 학습 칸은 자기 ``checkpoints`` 폴더에
@@ -301,7 +309,7 @@ from typing import Any, Callable, Sequence
 
 import numpy as np
 
-__version__ = "4.0.2"
+__version__ = "4.0.3"
 # 4.0: 대응 배선(L4->L2->L3->다음 L4), 주변부 수렴, L5/L6/L1 순차 이중 교정 (메뉴 14).
 #      legacy 배선 모드는 3.2.2 와 같은 규칙·난수 스트림을 쓴다.
 # 3.1: 메뉴 12로 실제 다구획/스파이크 전달을 train-only 초기화한다.
@@ -8287,12 +8295,12 @@ class AsyncRecorder:
     def log(self, message: str) -> None:
         self._check_worker()
         stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        self.queue.put(("text", (self._log_path, f"[{stamp}] {message}")))
+        self._put(("text", (self._log_path, f"[{stamp}] {message}")))
 
     def metric(self, **fields: Any) -> None:
         self._check_worker()
         fields.setdefault("utc", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
-        self.queue.put(("text", (self._metrics_path, dumps(fields, indent=None))))
+        self._put(("text", (self._metrics_path, dumps(fields, indent=None))))
 
     def error(self, message: str, exc: BaseException | None = None, **extra: Any) -> None:
         row = {"utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -8300,7 +8308,7 @@ class AsyncRecorder:
         if exc is not None:
             row["exception"] = f"{type(exc).__name__}: {exc}"
             row["traceback"] = traceback.format_exc()
-        self.queue.put(("text", (self._errors_path, dumps(row, indent=None))))
+        self._put(("text", (self._errors_path, dumps(row, indent=None))))
 
     def begin_sample(self) -> None:
         self._sample_used = {"events": 0, "states": 0}
@@ -8317,7 +8325,7 @@ class AsyncRecorder:
         for r in rounds:
             row = {"utc": stamp, "sample_id": int(sample_id),
                    "episode_id": int(episode_id), **r}
-            self.queue.put(("text", (self._rounds_path, dumps(row, indent=None))))
+            self._put(("text", (self._rounds_path, dumps(row, indent=None))))
         with self._lock:
             self.counters["correction_rounds_recorded"] += len(rounds)
 
@@ -8341,7 +8349,7 @@ class AsyncRecorder:
                 self._note_stop("events",
                                 "full 기록 예산 초과: 안전하게 중단한다. 남은 사건을 "
                                 "선택/요약으로 몰래 바꾸지 않는다.")
-                self.queue.put(("table", ("events", EVENT_FIELDS, rows[:allow])))
+                self._put(("table", ("events", EVENT_FIELDS, rows[:allow])))
                 self.counters["events_recorded"] += int(allow)
                 self.flush()
                 raise RecordingBudgetExceeded(
@@ -8350,7 +8358,7 @@ class AsyncRecorder:
                     f"중단한다. 예산을 늘리거나 recording.mode 를 명시적으로 바꾸라.")
             rows = rows[:allow]
             self._note_stop("events", "표본 예산 초과분을 기록하지 않았다")
-        self.queue.put(("table", ("events", EVENT_FIELDS, rows)))
+        self._put(("table", ("events", EVENT_FIELDS, rows)))
         self.counters["events_recorded"] += int(rows.shape[0])
         self._sample_used["events"] += int(rows.shape[0])
 
@@ -8369,7 +8377,7 @@ class AsyncRecorder:
             self.counters["state_rows_skipped_budget"] += int(rows.shape[0] - allow)
             rows = rows[:allow]
             self._note_stop("states", "표본 예산 초과분을 기록하지 않았다")
-        self.queue.put(("table", ("states", STATE_FIELDS, rows)))
+        self._put(("table", ("states", STATE_FIELDS, rows)))
         self.counters["state_rows_recorded"] += int(rows.shape[0])
         self._sample_used["states"] += int(rows.shape[0])
 
@@ -8377,7 +8385,7 @@ class AsyncRecorder:
         self._check_worker()
         if rows.size == 0:
             return
-        self.queue.put(("table", ("gain_updates", GAIN_FIELDS, rows)))
+        self._put(("table", ("gain_updates", GAIN_FIELDS, rows)))
         self.counters["gain_rows_recorded"] += int(rows.shape[0])
 
     def _note_stop(self, table: str, reason: str) -> None:
@@ -8391,8 +8399,22 @@ class AsyncRecorder:
         self.flush()
         return dict(self.store.committed)
 
+    def _put(self, item: Any) -> None:
+        # 시간 제한 없는 put 은 Windows 에서 Ctrl+C 로 깨어나지 않는다 (큐가 가득 찼을 때).
+        while True:
+            try:
+                self.queue.put(item, timeout=0.2)
+                return
+            except queue.Full:
+                if not self._thread.is_alive():
+                    raise RuntimeError("기록 writer 스레드가 멈췄다.") from None
+
     def flush(self) -> None:
-        self.queue.join()
+        # queue.join() 대신 짧은 시간 제한 대기를 반복한다 (Windows 에서 Ctrl+C 응답).
+        q = self.queue
+        with q.all_tasks_done:
+            while q.unfinished_tasks and self._thread.is_alive():
+                q.all_tasks_done.wait(0.2)
         self._check_worker()
 
     def write_summary_csv(self, rows: list[dict[str, Any]]) -> None:
@@ -8424,7 +8446,7 @@ class AsyncRecorder:
             self.manifest["status_reason"] = reason
         self.manifest["finished_utc"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         write_json(self.dir / "manifest.json", self.manifest)
-        self.queue.put(None)
+        self._put(None)
         self._thread.join(timeout=30)
         self.store.close()
 
@@ -14210,6 +14232,8 @@ def run_full_sweep(base_cfg: dict[str, Any], output_root: Path | None, device_ch
                             f"({out / 'checkpoints'})")
                     if st == "interrupted":
                         status, reason = "interrupted", "사용자 중단 (칸 내부)"
+                        say(f"  [중단] 칸 {c['cell_id']} 을(를) interrupted 로 기록했다. "
+                            "이어서 실행하면 이 칸은 처음부터 다시 돈다.")
                         break
                     measured.append(time.time() - t0)
                 except KeyboardInterrupt:
@@ -14240,25 +14264,40 @@ def run_full_sweep(base_cfg: dict[str, Any], output_root: Path | None, device_ch
                     _free_device_memory()
     except KeyboardInterrupt:
         status, reason = "interrupted", "사용자가 Ctrl+C 로 중단했다. 같은 폴더로 이어서 실행할 수 있다."
-    summary = build_sweep_summary(root)
-    summary["status"] = status
-    summary["reason"] = reason
-    summary["wall_time_s"] = round(time.time() - t_start, 1)
-    write_json(root / "sweep_summary.json", summary)
-    _write_rows_csv(root / "sweep_summary.csv", summary["rows"])
-    _write_rows_csv(root / "sweep_aggregate.csv", summary["aggregate"])
-    mani = read_json(root / "manifest.json")
-    mani.update(status=status, status_reason=reason,
-                finished_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
-    write_json(root / "manifest.json", mani)
+    if status == "interrupted":
+        say("[중단 요청 받음] 진행 기록은 이미 저장됐다. 지금까지의 요약·보고서·그림을 "
+            "만드는 중이다 (칸 수에 따라 몇 분 걸릴 수 있다). 기다리지 않으려면 Ctrl+C 를 "
+            "한 번 더 누른다. 같은 폴더로 이어서 실행하면 끝난 칸은 건너뛴다.")
+    else:
+        say("요약·보고서·그림을 만드는 중이다.")
     try:
-        ReportBuilder(root).build()
-    except Exception as exc:                                 # noqa: BLE001
-        summary["report_error"] = f"{type(exc).__name__}: {exc}"
-    try:
-        summary["figures"] = make_figures(root)
-    except Exception as exc:                                 # noqa: BLE001
-        summary["figures_error"] = f"{type(exc).__name__}: {exc}"
+        summary = build_sweep_summary(root)
+        summary["status"] = status
+        summary["reason"] = reason
+        summary["wall_time_s"] = round(time.time() - t_start, 1)
+        write_json(root / "sweep_summary.json", summary)
+        _write_rows_csv(root / "sweep_summary.csv", summary["rows"])
+        _write_rows_csv(root / "sweep_aggregate.csv", summary["aggregate"])
+        mani = read_json(root / "manifest.json")
+        mani.update(status=status, status_reason=reason,
+                    finished_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+        write_json(root / "manifest.json", mani)
+        try:
+            ReportBuilder(root).build()
+        except Exception as exc:                             # noqa: BLE001
+            summary["report_error"] = f"{type(exc).__name__}: {exc}"
+        try:
+            summary["figures"] = make_figures(root)
+        except Exception as exc:                             # noqa: BLE001
+            summary["figures_error"] = f"{type(exc).__name__}: {exc}"
+    except KeyboardInterrupt:
+        # 두 번째 Ctrl+C: 요약 작성을 건너뛴다. 진행 기록(sweep_progress.jsonl)과 칸별
+        # 결과는 이미 파일에 있으므로 잃는 것은 없다.
+        say("[요약 생략] 두 번째 Ctrl+C 로 요약·보고서 작성을 건너뛰었다. 같은 폴더로 "
+            "이어서 실행하면 마지막에 다시 만든다.")
+        summary = {"status": "interrupted", "reason": reason + " (요약 작성 생략)",
+                   "cell_status_counts": {}, "stages": [], "failure_messages": {},
+                   "dev_based_choice": {}, "summary_skipped": True}
     summary["root"] = str(root)
     return summary
 
