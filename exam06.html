@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Document</title>
 </head>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@100..900&display=swap" rel="stylesheet">
 <style>
     /*링크 가상 클래스 선택자(전체 선택자 영향 받는 중)*/
     a:link {color: black; text-decoration: none;} 
@@ -12,10 +15,16 @@
     a:hover {color: cyan;}/*링크 위에서 마우스가 호버링 중일 때*/
     a:active {background-color: darkgray;}
 </style>
+
+
 <style>
     * {color: blue;}/*전체 선택자*/
     p {background-color: yellow;}/*태그 선택자*/
     .c1 {border: 1px solid red;}/*클래스 선택자*/
+    .c1 {
+    font-family: "Noto Sans KR", sans-serif;
+    font-optical-sizing: auto;
+    }
     #n1 {background-color: aqua;}/*id 선택자*/
     ul li {color: brown;}/*하위 선택자*/
     ol>li {color: chartreuse;} /*자식 선택자*/
