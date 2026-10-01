@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""simple_perceptron.py -- 입력 2개, 출력 1개짜리 단순 퍼셉트론.
+"""simple_perceptron.py -- 입력 2개, 출력 1개짜리 단순 퍼셉트론 (편향 없음).
 
 순전파, 역전파, 가중치 갱신에서 일어나는 **모든 연산**을 한 줄씩 출력한다.
 입력 노드 두 개의 값(x1, x2)과 정답 레이블(t)은 사용자가 지정한다.
@@ -7,8 +7,11 @@
 구조::
 
     x1 --(w1)--+
-               +--> z = w1*x1 + w2*x2 + b --> y = sigmoid(z) --> E = 1/2 * (t - y)^2
-    x2 --(w2)--+          (b: 편향)
+               +--> z = w1*x1 + w2*x2 --> y = sigmoid(z) --> E = 1/2 * (t - y)^2
+    x2 --(w2)--+
+
+편향(b)이 없으므로 x1 = x2 = 0 이면 가중치와 상관없이 z = 0, y = 0.5 이고
+기울기도 0 이 된다 (결정 경계가 항상 원점을 지난다).
 
     역전파(연쇄법칙):  dE/dw = dE/dy * dy/dz * dz/dw
     가중치 갱신:       w <- w - lr * dE/dw
@@ -23,8 +26,8 @@
     python simple_perceptron.py --sample 0 0 0 --sample 0 1 0 \\
         --sample 1 0 0 --sample 1 1 1 --epochs 2 --lr 0.5
 
-    # 초기 가중치/편향, 출력 자릿수도 지정할 수 있다
-    python simple_perceptron.py --sample 1 1 1 --w1 0.5 --w2 -0.5 --bias 0 --digits 4
+    # 초기 가중치, 출력 자릿수도 지정할 수 있다
+    python simple_perceptron.py --sample 1 1 1 --w1 0.5 --w2 -0.5 --digits 4
 
 정답 레이블은 sigmoid 출력 범위와 같은 0 ~ 1 사이 값이어야 한다.
 외부 라이브러리 없이 표준 라이브러리(argparse, math, os, sys)만 사용한다.
@@ -39,7 +42,6 @@ import sys
 
 DEFAULT_W1 = 0.3
 DEFAULT_W2 = -0.2
-DEFAULT_BIAS = 0.1
 DEFAULT_LR = 0.5
 DEFAULT_EPOCHS = 1
 DEFAULT_DIGITS = 6
@@ -58,12 +60,11 @@ def fmt(v: float, digits: int) -> str:
 
 
 class SimplePerceptron:
-    """입력 2개 -> 출력 1개. 활성화 sigmoid, 오차 E = 1/2 * (t - y)^2."""
+    """입력 2개 -> 출력 1개 (편향 없음). 활성화 sigmoid, 오차 E = 1/2 * (t - y)^2."""
 
-    def __init__(self, w1: float, w2: float, b: float, lr: float, digits: int):
+    def __init__(self, w1: float, w2: float, lr: float, digits: int):
         self.w1 = w1
         self.w2 = w2
-        self.b = b
         self.lr = lr
         self.digits = digits
 
@@ -78,7 +79,7 @@ class SimplePerceptron:
         return f"({s})" if s.startswith("-") else s
 
     def params(self) -> str:
-        return f"w1 = {self.v(self.w1)}, w2 = {self.v(self.w2)}, b = {self.v(self.b)}"
+        return f"w1 = {self.v(self.w1)}, w2 = {self.v(self.w2)}"
 
     # ---- 순전파 ------------------------------------------------------
     def forward(self, x1: float, x2: float, t: float) -> tuple[float, float, float]:
@@ -86,13 +87,13 @@ class SimplePerceptron:
         v, p = self.v, self.p
         print("  [순전파]")
 
-        print("   (1) 가중합  z = w1*x1 + w2*x2 + b")
+        print("   (1) 가중합  z = w1*x1 + w2*x2")
         w1x1 = self.w1 * x1
         print(f"       w1*x1 = {p(self.w1)} * {p(x1)} = {v(w1x1)}")
         w2x2 = self.w2 * x2
         print(f"       w2*x2 = {p(self.w2)} * {p(x2)} = {v(w2x2)}")
-        z = w1x1 + w2x2 + self.b
-        print(f"       z = {p(w1x1)} + {p(w2x2)} + {p(self.b)} = {v(z)}")
+        z = w1x1 + w2x2
+        print(f"       z = {p(w1x1)} + {p(w2x2)} = {v(z)}")
 
         print("   (2) 활성화  y = sigmoid(z) = 1 / (1 + e^(-z))")
         if z >= -700.0:
@@ -131,8 +132,8 @@ class SimplePerceptron:
         return z, y, err
 
     # ---- 역전파 ------------------------------------------------------
-    def backward(self, x1: float, x2: float, t: float, y: float) -> tuple[float, float, float]:
-        """역전파. 연쇄법칙의 각 항을 출력하고 (dE/dw1, dE/dw2, dE/db) 를 돌려준다."""
+    def backward(self, x1: float, x2: float, t: float, y: float) -> tuple[float, float]:
+        """역전파. 연쇄법칙의 각 항을 출력하고 (dE/dw1, dE/dw2) 를 돌려준다."""
         v, p = self.v, self.p
         print("  [역전파]  연쇄법칙: dE/dw = dE/dy * dy/dz * dz/dw")
 
@@ -150,30 +151,26 @@ class SimplePerceptron:
         delta = dE_dy * dy_dz
         print(f"       delta = {p(dE_dy)} * {p(dy_dz)} = {v(delta)}")
 
-        print("   (4) 파라미터별 기울기  (dz/dw1 = x1, dz/dw2 = x2, dz/db = 1)")
+        print("   (4) 가중치별 기울기  (dz/dw1 = x1, dz/dw2 = x2)")
         g_w1 = delta * x1
         print(f"       dE/dw1 = delta * x1 = {p(delta)} * {p(x1)} = {v(g_w1)}")
         g_w2 = delta * x2
         print(f"       dE/dw2 = delta * x2 = {p(delta)} * {p(x2)} = {v(g_w2)}")
-        g_b = delta * 1.0
-        print(f"       dE/db  = delta * 1  = {p(delta)} * 1 = {v(g_b)}")
-        return g_w1, g_w2, g_b
+        return g_w1, g_w2
 
     # ---- 가중치 갱신 -------------------------------------------------
-    def update(self, g_w1: float, g_w2: float, g_b: float) -> None:
+    def update(self, g_w1: float, g_w2: float) -> None:
         """경사하강법 w <- w - lr * dE/dw. 모든 연산을 출력한다."""
         print(f"  [가중치 갱신]  w <- w - lr * dE/dw   (lr = {self.v(self.lr)})")
         self.w1 = self._step("w1", self.w1, g_w1)
         self.w2 = self._step("w2", self.w2, g_w2)
-        self.b = self._step("b", self.b, g_b)
 
     def _step(self, name: str, w: float, g: float) -> float:
         v, p = self.v, self.p
         step = self.lr * g
         new = w - step
-        label = name.ljust(2)
-        print(f"       {label}: lr * dE/d{label} = {p(self.lr)} * {p(g)} = {v(step)}")
-        print(f"           {label} = {p(w)} - {p(step)} = {v(new)}")
+        print(f"       {name}: lr * dE/d{name} = {p(self.lr)} * {p(g)} = {v(step)}")
+        print(f"           {name} = {p(w)} - {p(step)} = {v(new)}")
         return new
 
 
@@ -302,7 +299,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     ap.add_argument("--epochs", type=int, help=f"에포크 수 (기본 {DEFAULT_EPOCHS})")
     ap.add_argument("--w1", type=float, help=f"초기 가중치 w1 (기본 {DEFAULT_W1})")
     ap.add_argument("--w2", type=float, help=f"초기 가중치 w2 (기본 {DEFAULT_W2})")
-    ap.add_argument("--bias", type=float, help=f"초기 편향 b (기본 {DEFAULT_BIAS})")
     ap.add_argument("--digits", type=int, default=DEFAULT_DIGITS,
                     help=f"출력 소수점 자릿수 (기본 {DEFAULT_DIGITS})")
     args = ap.parse_args(argv)
@@ -317,7 +313,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ap.error(check_lr(args.lr))
     if args.epochs is not None and args.epochs < 1:
         ap.error("에포크 수는 1 이상이어야 합니다.")
-    for name in ("w1", "w2", "bias"):
+    for name in ("w1", "w2"):
         x = getattr(args, name)
         if x is not None and check_finite(x):
             ap.error(f"--{name} 값이 유한한 숫자가 아닙니다: {x}")
@@ -334,7 +330,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     samples = args.sample
     lr, epochs = args.lr, args.epochs
-    w1, w2, b = args.w1, args.w2, args.bias
+    w1, w2 = args.w1, args.w2
 
     if samples is None:
         # 대화형: 샘플과, 명령행에서 지정하지 않은 설정만 묻는다.
@@ -349,8 +345,6 @@ def main(argv: list[str] | None = None) -> int:
                 w1 = ask_float("  초기 가중치 w1", DEFAULT_W1)
             if w2 is None:
                 w2 = ask_float("  초기 가중치 w2", DEFAULT_W2)
-            if b is None:
-                b = ask_float("  초기 편향 b", DEFAULT_BIAS)
         except (EOFError, KeyboardInterrupt):
             print("\n입력이 중단되어 종료합니다.")
             return 1
@@ -359,12 +353,11 @@ def main(argv: list[str] | None = None) -> int:
     epochs = DEFAULT_EPOCHS if epochs is None else epochs
     w1 = DEFAULT_W1 if w1 is None else w1
     w2 = DEFAULT_W2 if w2 is None else w2
-    b = DEFAULT_BIAS if b is None else b
 
-    model = SimplePerceptron(w1, w2, b, lr, args.digits)
+    model = SimplePerceptron(w1, w2, lr, args.digits)
     v = model.v
     print(LINE)
-    print("단순 퍼셉트론  (입력 2개 -> 출력 1개, 활성화 sigmoid, 오차 E = 1/2 * (t - y)^2)")
+    print("단순 퍼셉트론  (입력 2개 -> 출력 1개, 편향 없음, 활성화 sigmoid, 오차 E = 1/2 * (t - y)^2)")
     print(f" 초기 파라미터: {model.params()}")
     print(f" 학습률 lr = {v(lr)}, 에포크 = {epochs}, 샘플 수 = {len(samples)}")
     print(" 샘플 목록:")
