@@ -30,7 +30,7 @@
     python simple_perceptron.py --sample 1 1 1 --w1 0.5 --w2 -0.5 --digits 4
 
 정답 레이블은 sigmoid 출력 범위와 같은 0 ~ 1 사이 값이어야 한다.
-외부 라이브러리 없이 표준 라이브러리(argparse, math, os, sys)만 사용한다.
+외부 라이브러리 없이 표준 라이브러리(argparse, math, os, sys, unicodedata)만 사용한다.
 """
 
 from __future__ import annotations
@@ -39,6 +39,7 @@ import argparse
 import math
 import os
 import sys
+import unicodedata
 
 DEFAULT_W1 = 0.3
 DEFAULT_W2 = -0.2
@@ -57,6 +58,23 @@ def fmt(v: float, digits: int) -> str:
     if float(s) == 0.0:
         s = s.lstrip("-")
     return s
+
+
+def predict(y: float) -> int:
+    return 1 if y >= THRESHOLD else 0
+
+
+def judge(pred: int, t: float) -> str:
+    """정답이 0 또는 1 일 때만 맞음/틀림을 판정한다."""
+    if t not in (0.0, 1.0):
+        return "-"
+    return "맞음" if pred == int(t) else "틀림"
+
+
+def rjust(s: str, width: int) -> str:
+    """오른쪽 정렬. 한글처럼 두 칸을 차지하는 글자는 2칸으로 센다."""
+    shown = sum(2 if unicodedata.east_asian_width(c) in ("W", "F") else 1 for c in s)
+    return " " * max(0, width - shown) + s
 
 
 class SimplePerceptron:
@@ -123,11 +141,9 @@ class SimplePerceptron:
         err = 0.5 * sq
         print(f"       E = 0.5 * {p(sq)} = {v(err)}")
 
-        pred = 1 if y >= THRESHOLD else 0
+        pred = predict(y)
         sign = ">=" if pred == 1 else "<"
-        verdict = ""
-        if t in (0.0, 1.0):
-            verdict = f"  (정답 {int(t)} -> {'맞음' if pred == int(t) else '틀림'})"
+        verdict = f"  (정답 {int(t)} -> {judge(pred, t)})" if t in (0.0, 1.0) else ""
         print(f"   (4) 판정  y = {v(y)} {sign} {THRESHOLD} -> 예측 클래스 {pred}{verdict}")
         return z, y, err
 
@@ -175,10 +191,14 @@ class SimplePerceptron:
 
 
 # ---- 학습 / 평가 -----------------------------------------------------
-def train(model: SimplePerceptron, samples: list[tuple[float, float, float]], epochs: int) -> None:
-    """온라인 학습: 샘플 하나마다 순전파 -> 역전파 -> 갱신."""
+def train(model: SimplePerceptron, samples: list[tuple[float, float, float]], epochs: int) -> list[tuple]:
+    """온라인 학습: 샘플 하나마다 순전파 -> 역전파 -> 갱신.
+
+    단계마다 (에포크, 샘플 번호, x1, x2, t, 갱신 전 w1, 갱신 전 w2, y, E) 를 기록해 돌려준다.
+    """
     v = model.v
     n = len(samples)
+    history = []
     for epoch in range(1, epochs + 1):
         print(LINE)
         print(f"에포크 {epoch}/{epochs}")
@@ -187,42 +207,86 @@ def train(model: SimplePerceptron, samples: list[tuple[float, float, float]], ep
             print(SUBLINE)
             print(f" 에포크 {epoch}/{epochs} | 샘플 {i}/{n}:  x1 = {v(x1)}, x2 = {v(x2)}, 정답 t = {v(t)}")
             print(f"  현재 파라미터: {model.params()}")
+            w1, w2 = model.w1, model.w2
             _, y, err = model.forward(x1, x2, t)
             grads = model.backward(x1, x2, t, y)
             model.update(*grads)
             print(f"  갱신 후 파라미터: {model.params()}")
             losses.append(err)
+            history.append((epoch, i, x1, x2, t, w1, w2, y, err))
 
         total = sum(losses)
         print(SUBLINE)
         print(f" 에포크 {epoch} 평균 오차 (각 샘플 갱신 직전의 E 평균)")
         print(f"   = ({' + '.join(v(e) for e in losses)}) / {n}")
         print(f"   = {v(total)} / {n} = {v(total / n)}")
+    return history
 
 
-def evaluate(model: SimplePerceptron, samples: list[tuple[float, float, float]]) -> None:
-    """학습이 끝난 가중치로 순전파만 수행하고 결과 표를 출력한다."""
+def evaluate(model: SimplePerceptron, samples: list[tuple[float, float, float]]) -> list[tuple]:
+    """학습이 끝난 가중치로 순전파만 수행한다. 샘플마다 (번호, x1, x2, t, y, E) 를 돌려준다."""
     v = model.v
     n = len(samples)
     print(LINE)
     print("학습 후 평가 (갱신된 가중치로 순전파만 수행, 가중치는 바꾸지 않음)")
     print(f" 최종 파라미터: {model.params()}")
-    rows = []
+    results = []
     for i, (x1, x2, t) in enumerate(samples, 1):
         print(SUBLINE)
         print(f" 샘플 {i}/{n}:  x1 = {v(x1)}, x2 = {v(x2)}, 정답 t = {v(t)}")
         _, y, err = model.forward(x1, x2, t)
-        rows.append((i, x1, x2, t, y, err, 1 if y >= THRESHOLD else 0))
+        results.append((i, x1, x2, t, y, err))
+    return results
 
-    width = model.digits + 6
+
+def score(pairs: list[tuple[float, float]]) -> str:
+    """(y, t) 목록의 정답 수. 정답이 0/1 이 아닌 샘플은 세지 않는다."""
+    verdicts = [judge(predict(y), t) for y, t in pairs]
+    judged = [s for s in verdicts if s != "-"]
+    if not judged:
+        return ""
+    return f"정답 {judged.count('맞음')}/{len(judged)}, "
+
+
+def summarize(model: SimplePerceptron, history: list[tuple], results: list[tuple]) -> None:
+    """[1] 학습 도중 각 단계의 출력과 [2] 최종 가중치로 다시 계산한 출력을 표로 보여 준다."""
+    v = model.v
+    w = model.digits + 6
+
+    def row(cells, widths):
+        print("  " + "".join(rjust(c, wd) for c, wd in zip(cells, widths)))
+
     print(LINE)
     print("결과 요약")
-    print("  #  " + "".join(h.rjust(width) for h in ("x1", "x2", "t", "y", "E")) + "  예측")
-    for i, x1, x2, t, y, err, pred in rows:
-        cells = "".join(v(c).rjust(width) for c in (x1, x2, t, y, err))
-        print(f" {i:>2}  {cells}  {pred}")
-    total = sum(r[5] for r in rows)
-    print(f" 평균 오차 = ({' + '.join(v(r[5]) for r in rows)}) / {n} = {v(total / n)}")
+    print()
+    print("[1] 학습 중 기록: 각 샘플을 학습할 때의 출력 (w1, w2 는 그 샘플로 갱신하기 직전 값)")
+    widths = (8, 6) + (w,) * 7 + (6, 6)
+    row(("에포크", "샘플", "x1", "x2", "t", "w1", "w2", "y", "E", "예측", "정오"), widths)
+    for start in range(0, len(history), len(results)):
+        steps = history[start:start + len(results)]
+        for epoch, i, x1, x2, t, w1, w2, y, err in steps:
+            pred = predict(y)
+            row((str(epoch), str(i), v(x1), v(x2), v(t), v(w1), v(w2), v(y), v(err),
+                 str(pred), judge(pred, t)), widths)
+        mean = sum(s[8] for s in steps) / len(steps)
+        pairs = [(s[7], s[4]) for s in steps]
+        print(f"   -> 에포크 {steps[0][0]}: {score(pairs)}평균 오차 {v(mean)}")
+
+    print()
+    print(f"[2] 학습 후 평가: 최종 가중치 {model.params()} 로 모든 샘플을 다시 계산한 출력")
+    widths = (6,) + (w,) * 5 + (6, 6)
+    row(("샘플", "x1", "x2", "t", "y", "E", "예측", "정오"), widths)
+    for i, x1, x2, t, y, err in results:
+        pred = predict(y)
+        row((str(i), v(x1), v(x2), v(t), v(y), v(err), str(pred), judge(pred, t)), widths)
+    n = len(results)
+    total = sum(r[5] for r in results)
+    pairs = [(r[4], r[3]) for r in results]
+    print(f"   -> {score(pairs)}평균 오차 = ({' + '.join(v(r[5]) for r in results)}) / {n} = {v(total / n)}")
+
+    print()
+    print(" ※ [1] 은 가중치가 샘플마다 바뀌는 도중의 값이고, [2] 는 마지막 갱신까지 끝난")
+    print("   가중치 하나로 계산한 값이라 두 표의 y, E, 예측이 다를 수 있습니다.")
 
 
 # ---- 입력 처리 -------------------------------------------------------
@@ -364,8 +428,9 @@ def main(argv: list[str] | None = None) -> int:
     for i, (x1, x2, t) in enumerate(samples, 1):
         print(f"   {i}: x1 = {v(x1)}, x2 = {v(x2)}, 정답 t = {v(t)}")
 
-    train(model, samples, epochs)
-    evaluate(model, samples)
+    history = train(model, samples, epochs)
+    results = evaluate(model, samples)
+    summarize(model, history, results)
     return 0
 
 
