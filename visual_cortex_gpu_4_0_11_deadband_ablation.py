@@ -43208,7 +43208,7 @@ class _DBChecksMixin:
         saved = net.policy
         gates = {}
         try:
-            for c in self.conditions:
+            for c in self.db_conditions:
                 net.policy = self.policies[c]
                 g, _ = net.teacher_gate(free, labels, sel["target"])
                 gates[c] = g.detach().to("cpu")
@@ -43229,7 +43229,7 @@ class _DBChecksMixin:
         fb = float(self.dbs["theta"]["fast_bound_mV"])
         per: dict[str, Any] = {}
         ok = True
-        for cond in self.conditions:
+        for cond in self.db_conditions:
             pol, mask = self.policies[cond], self.db_masks[cond]
             a.theta_base.copy_(self.theta_init)
             net.set_policy(pol, mask)
@@ -43397,7 +43397,7 @@ class _DBChecksMixin:
         self.say("CPU 합성 검사 DB1a·DB2~DB7 (회로 없음) ...")
         cpu = db_cpu_checks(self.dbs)
         bs = int(self.pre["batch_size"])
-        n_settle = 2 * (2 * int(self.dbs["learning"]["K_rounds"]) + 2) + 1 + len(self.conditions) * (
+        n_settle = 2 * (2 * int(self.dbs["learning"]["K_rounds"]) + 2) + 1 + len(self.db_conditions) * (
             2 * int(self.dbs["learning"]["K_rounds"]) + 2) + 1 + 2 * (2 * int(self.dbs["learning"]["K_rounds"]) + 2) \
             + 1 + 4 * (2 * int(self.dbs["learning"]["K_rounds"]) + 2) + math.ceil(len(self.sel["train"]) / bs)
         circ: dict[str, Any] = {}
@@ -43496,8 +43496,8 @@ class _DBChecksMixin:
         self.run_tag = self._run_tag_given or "deadband_holdout"
         sel_meta: dict[str, Any] = {}
         for c in conditions:
-            if c not in self.conditions:
-                raise ValueError(f"원 실행 조건이 아니다: {c} (가능: {self.conditions})")
+            if c not in self.db_conditions:
+                raise ValueError(f"원 실행 조건이 아니다: {c} (가능: {self.db_conditions})")
             jp = source / "checkpoints" / safe_name(c) / "selected.json"
             npz = source / "checkpoints" / safe_name(c) / "selected.npz"
             if not (jp.is_file() and npz.is_file()):
@@ -43609,7 +43609,7 @@ def run_db_holdout(base_cfg: dict[str, Any], output_root: Path, device_choice: s
     exp = DeadbandAblation(base_cfg, output_root, device_choice, settings=settings, seed=seed, env=env,
                            progress=progress, confirm=confirm, allow_code_mismatch=allow_code_mismatch,
                            run_tag="deadband_holdout")
-    conds = list(conditions) if conditions else list(exp.conditions)
+    conds = list(conditions) if conditions else list(exp.db_conditions)
     return exp.run_holdout(source, conds, allow_repeat=allow_repeat)
 
 
@@ -43700,7 +43700,7 @@ class DeadbandAblation(_DBChecksMixin, ThresholdLearningF0r):
         self.allow_code_mismatch = bool(allow_code_mismatch)
         self.tl_exec: dict[str, Any] = {}
         self.checks: dict[str, Any] = {}
-        self.conditions = db_all_conditions(dbs)
+        self.db_conditions = db_all_conditions(dbs)
         self.policies = {c: db_policy(dbs, c) for c in DB_CONDITION_TABLE}
         self.compare_policies = [self.policies[c] for c in DB_COMPARE_POLICIES]
         self.excluded_test: list[Any] = []
@@ -43775,7 +43775,7 @@ class DeadbandAblation(_DBChecksMixin, ThresholdLearningF0r):
             return int(msk.sum())
         cur["deadband_ablation"] = {
             "format": DB_FORMAT, "settings": self.dbs, "settings_sha256": db_settings_sha(self.dbs),
-            "conditions": self.conditions, "policies": db_policy_table(self.dbs),
+            "conditions": self.db_conditions, "policies": db_policy_table(self.dbs),
             "compare_policies_same_state": list(DB_COMPARE_POLICIES),
             "main_contrasts": [f"{b_} - {a_}" for b_, a_ in DB_MAIN_CONTRASTS], "units_ko": DB_UNITS_KO,
             "teacher_tolerance_fixed_across_conditions": True, "automatic_tuning": False,
@@ -44330,7 +44330,7 @@ class DeadbandAblation(_DBChecksMixin, ThresholdLearningF0r):
     def _estimate(self) -> dict[str, Any]:
         n_prep = (len(self.sel["train"]) if not int(self.pre.get("prep_max_samples") or 0)
                   else min(len(self.sel["train"]), int(self.pre["prep_max_samples"])))
-        return {**db_estimate(n_conditions=len(self.conditions), n_train=len(self.sel["train"]),
+        return {**db_estimate(n_conditions=len(self.db_conditions), n_train=len(self.sel["train"]),
                               n_dev=len(self.sel["dev"]), batch_size=int(self.pre["batch_size"]),
                               epochs=int(self.pre["epochs"]), K=int(self.dbs["learning"]["K_rounds"]), n_prep=n_prep,
                               n_diag_stimuli=len(self.dbs["diagnostic_stimuli"]), steps=self.obs_steps,
@@ -44367,7 +44367,7 @@ class DeadbandAblation(_DBChecksMixin, ThresholdLearningF0r):
         est = self._estimate()
         write_json(self.run_dir / "plan.json", est)
         sc = est["settle_calls"]
-        msg = (f"[{self.dbs['run_preset']}] 조건 {self.conditions}, train {est['split_sizes']['train']} / dev "
+        msg = (f"[{self.dbs['run_preset']}] 조건 {self.db_conditions}, train {est['split_sizes']['train']} / dev "
                f"{est['split_sizes']['dev']} (공개 test {est['excluded_public_test']}개는 쓰지 않음), 에폭 {est['epochs']}, "
                f"배치/에폭 {est['n_batches_per_epoch']}, K={est['K_rounds']}, 학습 settle {est['train_settles_formula']}, "
                f"평가·진단 settle {sc['evaluation_and_diagnostic']}, 준비 {sc['preparation']}, 장치 {self.runner.device}. "
@@ -44397,8 +44397,8 @@ class DeadbandAblation(_DBChecksMixin, ThresholdLearningF0r):
         self._latency_rows.extend(self._evaluate_diagnostic("(shared_initial)", "initial"))
         results: dict[str, Any] = {}
         status, reason = "completed", ""
-        for ci, cond in enumerate(self.conditions):
-            self.say(f"[조건 {ci + 1}/{len(self.conditions)}] {cond}")
+        for ci, cond in enumerate(self.db_conditions):
+            self.say(f"[조건 {ci + 1}/{len(self.db_conditions)}] {cond}")
             self._progress({"condition": cond, "status": "running", "policy": self.policies[cond].to_dict()})
             resume = self._load_ckpt(cond, self.resume_from) if self.resume_from is not None else None
             g = lat_guard(cond, lambda c=cond, r=resume: self._train_condition(
@@ -44417,7 +44417,7 @@ class DeadbandAblation(_DBChecksMixin, ThresholdLearningF0r):
         a.theta_base.copy_(self.theta_init)
         self.tl_exec["train"] = status
         if status == "completed":
-            for cond in self.conditions:
+            for cond in self.db_conditions:
                 a.theta_base.copy_(self._selected[cond])
                 e_ = self._evaluate(self.sel["dev"], split="dev", cond=cond, phase="selected")
                 self._latency_rows.extend(e_.pop("latency"))
@@ -44499,7 +44499,7 @@ class DeadbandAblation(_DBChecksMixin, ThresholdLearningF0r):
         metrics = {"format": DB_FORMAT, "task": self.task, "status": status, "reason": reason, "version": __version__,
                    "run_preset": self.dbs["run_preset"], "dt_ms": getattr(self, "dt", None),
                    "windows_ms": [list(w) for w in TL_WINDOWS_MS], "top_area": getattr(self, "top_area", None),
-                   "conditions_planned": self.conditions, "policies": db_policy_table(self.dbs),
+                   "conditions_planned": self.db_conditions, "policies": db_policy_table(self.dbs),
                    "selection_rule": self.dbs["selection_rule"], "executed": dict(self.tl_exec),
                    "test_access": self.runner.test_access, "split_access": self.runner.split_access, **metrics}
         metrics["run_integrity"] = {"fixed_parameters": self.model.verify_fixed_unchanged(),
@@ -44543,7 +44543,7 @@ class DeadbandAblation(_DBChecksMixin, ThresholdLearningF0r):
         if self.resume_from is None:
             return
         lim: dict[str, tuple[int, int]] = {}
-        for cond in self.conditions:
+        for cond in self.db_conditions:
             jp = self.resume_from / "checkpoints" / safe_name(cond) / "latest.json"
             if jp.is_file():
                 mt = read_json(jp)
@@ -46539,6 +46539,9 @@ class KoreanMenu:
                             print(f"  [알림] {k}: {res[k]}")
             except (OSError, ValueError, KeyError, RuntimeError) as exc:
                 print(f"  [오류] {type(exc).__name__}: {exc}")
+            except Exception as exc:                                   # noqa: BLE001
+                print(f"  [오류] {type(exc).__name__}: {exc} (전체 추적을 아래에 출력한다)")
+                traceback.print_exc()
 
     def threshold_menu(self, cfg: dict[str, Any], out: Path) -> None:
         """15번 하위 메뉴 (4.0.4 임계값 비교 진단). 고른 작업만 실행한다."""
