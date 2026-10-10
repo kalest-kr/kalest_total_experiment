@@ -291,6 +291,10 @@ python visual_cortex_gpu_4_0_19_local_correction.py --mode capacity_rebuild --cr
   - 이득 prior 불일치 거부
   - legacy 쌍 허용
   - 저장 설정의 모드 유지
+- 준비 기록 형식 검사 9 개 통과 (4.0.19 첫 배포 뒤 추가)
+  - local_l5l6 의 `restorers` / 복원기 오차는 기존과 같은 "이름 -> 정보 사전" 형식 (빈 사전) 이고, 사용하지 않는다는 사유는 `restorers_status` 에 따로 둔다
+  - 메뉴 27-5 에서 난 `AttributeError: 'str' object has no attribute 'get'` (ct_preparation 요약) 과 같은 읽기 식, RW·AG 보고서의 복원기 표 읽기 식을 그대로 통과한다
+  - 이 검사는 가짜 객체로 형식만 본다. 실제 torch 준비 실행은 여전히 NOT_RUN 이다
 
 이 검사들은 고정 규칙이 손실을 줄이거나 분류를 개선하는지 확인하지 않는다. 계산 경로·부호·마스크·검증·기록이 맞는지만 확인한다.
 

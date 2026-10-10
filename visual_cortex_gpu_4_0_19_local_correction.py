@@ -66663,14 +66663,34 @@ class CapacityRebuildExperiment(CosineTargetExperiment):
                                         "saturated_fraction_preparation": float(spec.saturated_fraction),
                                         "one_spike_activity_resolution": rw_resolution(dur, float(spec.rate_scale_hz)),
                                         "floor_1Hz_active": bool(float(spec.rate_scale_hz) == 1.0)}
-        return {"normalization": norm, "local_correction_gains": getattr(cal, "lc_gain_info", None),
+        top = net.top_area
+        it_scale = float(net.activity.specs[top].rate_scale_hz)
+        ri = (info.get("rate_scale") or {}).get("areas", {}).get(top) or {}
+        sp = (getattr(self, "rw_specs", None) or {}).get(w) or {}
+        it_l3: dict[str, Any] = {"window": {"readout_window_all_layers": net.lc_window, "duration_s": dur,
+                                            **{k: sp.get(k) for k in ("start_ms", "end_ms", "duration_ms", "selected_tick_range",
+                                                                      "n_integrated_steps") if k in sp}},
+                                 "rate_scale_hz": it_scale, "n_positive": ri.get("n_positive"),
+                                 "saturated_fraction_preparation": ri.get("saturated_fraction"),
+                                 "one_spike_activity_resolution": rw_resolution(dur, it_scale), "floor_1Hz_active": bool(it_scale == 1.0)}
+        free = getattr(cal, "_last_free", None) or {}
+        if top in (free.get("rates") or {}):
+            rates_it = _ag_np(free["rates"][top]).astype(np.float64)
+            it_l3["scale_recomputed_from_counts"] = rw_fit_scale(rates_it, percentile=float(net.activity.percentile))
+            it_l3["prep_count_stats"] = rw_count_stats(rates_it * dur)
+        # 형식은 기존과 같게 둔다: restorers 는 "복원기 이름 -> 정보" 사전이며 local_l5l6 에는 복원기가 없으므로 빈 사전이다.
+        return {"it_l3": it_l3, "normalization": norm, "local_correction_gains": getattr(cal, "lc_gain_info", None),
                 "timing_preparation": ((cal._rw_cache or {}).get("lc_timing_summary") if getattr(cal, "_rw_cache", None) else None),
-                "restorers": {"status": "NOT_USED", "reason_ko": "local_l5l6 모드는 D_A/T_B 를 적합·사용하지 않는다."},
-                "prototypes_sha256": cal.signatures().get("prototypes")}
+                "restorers": {}, "restorers_status": {"status": "NOT_USED", "reason_ko": "local_l5l6 모드는 D_A/T_B 를 적합·사용하지 않는다."},
+                "restorer_errors_preparation_data": {},
+                "classifier": {k: (info.get("classifier") or {}).get(k) for k in ("epochs", "lr", "l2", "final", "n_samples", "n_in")},
+                "image_decoder_train_mse": (info.get("image_decoder") or {}).get("train_mse"),
+                "prototypes_sha256": cal.signatures().get("prototypes"),
+                "it_variability": info.get("it_variability")}
 
     def _ag_restorer_errors(self, a3: dict[str, np.ndarray], a2: dict[str, np.ndarray]) -> dict[str, Any]:
         if self.lc_on:
-            return {"status": "NOT_APPLICABLE", "reason_ko": "local_l5l6 모드는 D_A/T_B 복원기를 쓰지 않는다 (실제 배선 경로 배분)."}
+            return {}   # "복원기 이름 -> 오차" 사전 형식 유지. local_l5l6 에는 D_A/T_B 복원기가 없다 (restorers_status 참고).
         return CosineTargetExperiment._ag_restorer_errors(self, a3, a2)
 
     def _ag_contract(self) -> dict[str, Any]:
@@ -68469,7 +68489,8 @@ class LCCalibrationRunner(CTCalibrationRunner):
             return info
         gi = self.fit_local_gains()
         info["local_correction_gains"] = gi
-        info["restorers"] = {"status": STATUS_SKIPPED, "reason_ko": "local_l5l6 모드는 D_A/T_B 를 적합·사용하지 않는다 (실제 배선 경로 사용)."}
+        info["restorers"] = {}   # 복원기 이름 -> 정보 사전 형식 유지 (복원기 없음)
+        info["restorers_status"] = {"status": STATUS_SKIPPED, "reason_ko": "local_l5l6 모드는 D_A/T_B 를 적합·사용하지 않는다 (실제 배선 경로 사용)."}
         info["signatures"] = self.signatures()
         self.info = dict(info)
         self.net.prep_info = dict(info)
