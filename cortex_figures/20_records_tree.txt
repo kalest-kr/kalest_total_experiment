@@ -1,0 +1,62 @@
+﻿그림 20 / 25 — 기록 파일 — run 폴더 하나에 모든 근거가 남는다
+범주: F 운영
+이미지 파일: 20_records_tree.png (2200 × 1524 픽셀, PNG)
+대상 프로그램: cortex_local_learning_v1.py + cortex_local_learning_v2_v1_guided_routing.py (v2.0.0)
+==============================================================================
+[이 그림이 보여 주는 것]
+실행 하나가 만드는 run 폴더의 파일 구성. 주황 글씨는 v2 에서 추가된 기록이다.
+보고서 result_summary.md 는 이 저장 기록에서만 만들고, 실행하지 않은 항목은 "미실행" 으로 쓴다.
+
+[run 폴더 바로 아래 파일]
+config.json             실제 적용 설정, 설정 구조·학습 해시, 수식
+effective_config.json   (v2) 라우팅 모드, 모드 설명, 효과 분리 규칙, 좌표 규약, 캐시 규칙, 뒷단 정보
+environment.json        Python · numpy · Pillow · matplotlib · PyTorch · 장치 정보
+assumptions.md          가정 · 한계 · 수식 전체 (프로그램이 자동으로 씀)
+run_info.json           (v2 확장) 데이터·저장 경로, 프로그램 해시, 분기 원본
+data_report.json        스캔 결과 (손상 · 미지원 · 빈 클래스 · 중복 그룹 · 충돌 · 원본 크기)
+split_manifest.json     분할 목록, 데이터 지문, 분할 해시
+class_to_index.json     클래스 번호
+preprocessing.json      전처리 정보, DC 검사
+architecture.json       층 · 연결 · 구조 해시 요약
+training.csv            에폭 행 + 학습 전 행 (dev 정확도, 클래스별 정확도, 혼동행렬, 출력 노름, 거리 개선 비율,
+                        q·prototype 효과, 시간, GPU 최대 메모리, 캐시 크기, 라우팅 통계 열)
+prototype_metrics.csv   prototype 최소 쌍각, collapse 경고
+evaluations.jsonl       모든 dev · test 평가와 누적 횟수
+stage_transitions.jsonl 단계 전환, 사용자 선택, 경고, 분기
+design_changes.jsonl    (v2) 설계 변경 기록 (test 를 본 뒤의 변경인지 표시)
+oom_events.jsonl        (v2) 메모리 부족 재시도 기록
+diagnostics.json        진단 실행 색인
+execution.log · errors.log  실행 · 오류 로그
+result_summary.md       저장 기록에서 만든 결과 요약 (라우팅 절 포함)
+
+[하위 폴더]
+checkpoints/            ckpt_NNNNNN_태그.npz + .json, latest.json (그림 18)
+structure/              영역별 구조 계획 요약 json, CSR 배열 npz
+prototype_snapshots/    prototype 상태 사본
+correction_samples/     교정 표본 (에폭당 64 · 단계당 512)
+diagnostics/            basic · role · perturbation · test_eval · routing_checks · routing_role · routing_intervention
+inference/<시각>/       추론 결과 csv · json, 특징 그림
+figures/                구조 · 학습 곡선 · prototype 유사도 · routing_*.png (원영상 위에 V1 방향 반응, P, 후보 Q,
+                        선택 Q*, 가정한 경로를 겹친 그림. 가정한 경로는 정답 윤곽이 아니다)
+routing/ (v2)
+  routing_candidates.npz            정적 후보 표: 주소 · 마스크 · 좌표 · 거리 · 방향 오차 · 기하 점수 · 경로 ·
+                                    보간 가중치 · 사유 · 규약 · 표 해시
+  routing_static_summary.json       후보 없음 비율 · 탈락 사유 · 고리별·방향별 · 계산량 · 표 해시
+  missing_by_ring_orientation.csv   고리 · 편심도 · θA · 곡률 부호별 후보 없음
+  routing_summary.csv               맥락(학습 전 · train 에폭 · dev 평가)별 선택 통계: 후보 없음·안내 없음 비율,
+                                    칸별 선택 빈도, 선택 집중도, 기존 위치와 다른 비율, 거리·방향 오차, B = 0 비율,
+                                    선택 S 평균, 지점 통계
+  routing_samples_영역_eNNN_partNNN.npz  제한된 표본(에폭당 16 · 단계당 128)의 표본 ID, P, 후보 Q, 고른 칸 · Q*,
+                                    안내 점수, A · B · u, 지점 통계 (라벨은 기록만 하고 선택에 쓰지 않음)
+
+[관련 코드]
+RunRecorder (SUBDIRS), Session.write_static, Session.effective_config, Session.write_routing_static,
+Session.write_routing_row, Session.flush_routing_samples, build_result_summary, routing_summary_lines
+
+[그림 공통 색 규칙]
+- 파란 실선 화살표: 순방향 감각 신호 (이미지 → LGN → V1 → V2 → V4 → IT)
+- 분홍 점선 화살표: 교정 신호 (δ, L1 배달, q 갱신)
+- 주황 선·칸: v2 에서 추가된 V1 안내 라우팅
+- 파란 칸: 표본마다 새로 계산하는 값, 분홍 칸: 저장·학습되는 값 (q, prototype)
+- 초록 칸: 통과·정상 종료, 빨간 칸: 제외·오류·금지
+- 회색 화살표: 프로그램 부품 사이의 호출·기록 순서

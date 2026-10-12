@@ -1,0 +1,47 @@
+﻿그림 18 / 25 — 중단·OOM·checkpoint·재개 — 어디서 멈춰도 같은 결과로
+범주: F 운영
+이미지 파일: 18_ops_interrupt_oom_checkpoint.png (2200 × 1320 픽셀, PNG)
+대상 프로그램: cortex_local_learning_v1.py + cortex_local_learning_v2_v1_guided_routing.py (v2.0.0)
+==============================================================================
+[이 그림이 보여 주는 것]
+세 줄로 나눠 학습 운영의 안전 장치를 보여 준다: 배치 하나와 중단 처리, 메모리 부족(OOM) 처리, checkpoint 와 재개.
+
+[1줄 — 배치 하나와 중단]
+q snapshot → 순방향 → 교정 계산 → q 적용 → 기록·진행 위치 → 다음 배치
+- q 적용과 기록·진행 위치 갱신은 한 묶음(critical)이다. 이 안에서 즉시 중단 요청이 오면 묶음이 끝날 때까지 미룬다.
+  그래서 반쯤 적용된 상태가 남지 않는다.
+- Ctrl+C 1회: 지금 배치를 마친 다음 배치 경계에서 멈추고 checkpoint 를 저장한다.
+- Ctrl+C 2회: 즉시 중단한다. 진행 중이던 배치의 q 는 snapshot 으로 되돌린다.
+- PyCharm 의 Stop 버튼은 프로세스를 바로 끝낼 수 있다. 그때는 마지막 checkpoint 부터 재개한다.
+
+[2줄 — 메모리 부족 (OOM)]
+배치 계산 → 메모리 부족?
+- 예 · 재시도 남음 → q 되돌림, gather 조각 크기 ½, oom_events.jsonl 기록 → 같은 배치 다시 (점선)
+  최대 3회 (routing.oom_retry_halvings), 조각은 4,096 원소 아래로 줄이지 않는다.
+- 재시도 소진 → 단계 상태 oom, 안내 문구 출력, checkpoint 저장
+- 아니오 (다른 예외) → failed, q 되돌림, checkpoint 저장 후 오류
+- CPU 로 몰래 바꾸지 않는다. 배치 크기와 수식이 같으므로 결과도 같다
+  (자체 검사 ST20: 오류를 한 번 주입한 실행의 q 가 주입 없는 실행과 비트 단위로 같음).
+
+[3줄 — checkpoint 와 재개]
+저장 시점: 50 배치마다(주기), 단계 끝, 메뉴 저장·종료.
+- ckpt_*.npz: q 전체, 영역별 prototype P · valid · counts
+- ckpt_*.json: 형식, 각종 해시, stage 상태, 동결 해시, 카운터, RNG 상태, 라우팅 모드·설정·후보 표 해시
+- latest.json: 마지막 checkpoint 이름
+재개: latest.json → 해시 확인(npz, 설정 구조·학습, 데이터 지문·분할, 층별 구조) → q · prototype · stage · RNG 복원
+→ checkpoint 이후에 쓰인 미확정 교정·라우팅 표본 조각 삭제 → next_batch 부터 계속.
+중단 없이 돌린 실행과 q · prototype 이 비트 단위로 같다 (자체 검사 ST07).
+에폭 학습은 끝났지만 prototype 갱신 전에 멈췄다면 재개 후 갱신부터 한다.
+주기 checkpoint 는 최근 3개만 남기고, 단계 끝·메뉴 저장(keep 표시)은 보존한다.
+
+[관련 코드]
+StopFlag (critical), StageTrainer.run (재시도 루프), is_oom_error, Session.save_checkpoint, Session.load,
+Session._discard_uncommitted_corrections, Session.sync_training_csv, Session._prune_checkpoints
+
+[그림 공통 색 규칙]
+- 파란 실선 화살표: 순방향 감각 신호 (이미지 → LGN → V1 → V2 → V4 → IT)
+- 분홍 점선 화살표: 교정 신호 (δ, L1 배달, q 갱신)
+- 주황 선·칸: v2 에서 추가된 V1 안내 라우팅
+- 파란 칸: 표본마다 새로 계산하는 값, 분홍 칸: 저장·학습되는 값 (q, prototype)
+- 초록 칸: 통과·정상 종료, 빨간 칸: 제외·오류·금지
+- 회색 화살표: 프로그램 부품 사이의 호출·기록 순서
