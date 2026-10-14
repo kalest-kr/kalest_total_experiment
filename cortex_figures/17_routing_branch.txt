@@ -1,0 +1,49 @@
+﻿그림 17 / 25 — 분기·호환 — 모드를 바꾸려면 새 run 으로 분기한다
+범주: E V1 안내 라우팅 (v2)
+이미지 파일: 17_routing_branch.png (2200 × 928 픽셀, PNG)
+대상 프로그램: cortex_local_learning_v1.py + cortex_local_learning_v2_v1_guided_routing.py (v2.0.0)
+==============================================================================
+[이 그림이 보여 주는 것]
+기존 실행(run)과 checkpoint 를 v2 에서 어떻게 읽는지, 그리고 라우팅 모드를 바꾸는 유일한 방법인 분기를 보여 준다.
+
+[위 왼쪽 — v1 run 읽기]
+v1 프로그램이 만든 run 은 config 에 routing 항목이 없다. v2 는 이것을 legacy 모드로 읽는다.
+legacy 의 구조 해시·설정 구조 해시는 v1 과 같으므로 v1 checkpoint 를 그대로 이어 쓸 수 있다
+(R01, 자체 검사 ST19 에서 q·구조 해시·V2 출력이 같음을 확인).
+
+[가운데 — 분기 (주황 칸)]
+v2 run (모드 X) 또는 legacy 로 읽은 v1 run 에서 새 run (모드 Y) 을 만든다. 메뉴 9-3 또는 --branch-from.
+1 V1·V2 의 q · prototype · 동결 해시를 복사하고, 다시 만든 구조의 해시와 원본이 같은지 검증
+2 V4 를 모드 Y 의 후보 표로 새로 생성
+3 V4 prototype 을 train 출력으로 새로 초기화 (V4 출력 정의가 바뀌었으므로 기존 V4 prototype 을 재사용하지 않음)
+4 V4 학습 → IT 를 새로 만들고 학습
+원본 run 폴더는 읽기만 한다. 분기 전후 원본 폴더 해시가 같은지 ST18·ST19 에서 확인했다.
+
+[오른쪽 — 허용하지 않는 것 (빨간 칸)]
+- 재개하면서 모드 변경: --resume 에 다른 --routing-mode 를 주면 CompatibilityError. 모드는 run 마다 고정이다.
+- v1 프로그램이 v2 run 읽기: v1 은 config 의 routing 키를 몰라 ConfigError 로 멈춘다 (legacy run 포함, 직접 확인함).
+
+[오른쪽 아래 — 구조 해시 규칙]
+- legacy: v1 과 같은 값 (설정 구조 해시에서 routing 항목을 뺀다)
+- 새 모드: 층 구조 해시에 후보 표 해시(모드 포함)를 더한다
+- checkpoint 에 후보 표 해시(table_sha256)를 저장하고, 다시 불러올 때 표를 다시 만들어 비교한다 (R09)
+
+[분기 기록]
+새 run 의 run_info.json (branched_from: 원본 run, 원본 모드, 원본 checkpoint, 재사용 영역, 원본 카운터)과
+stage_transitions.jsonl. 원본에서 이미 test 를 봤다면 새 run 의 test 평가는 독립 평가로 표시하지 않는다
+(test_eval_*.json 의 independence).
+
+[캐시]
+영역 출력(V1~IT)은 캐시하지 않는다. 캐시는 LGN 표본(전처리 해시 키)뿐이라 라우팅 변경 전 V4/IT 출력을 재사용할 수 없다.
+
+[관련 코드]
+Session.load (saved_config_with_mode, CKPT_FORMATS_READABLE), Session.branch, config_structure_sha,
+LayerSpec.hash, RoutingTable.hash
+
+[그림 공통 색 규칙]
+- 파란 실선 화살표: 순방향 감각 신호 (이미지 → LGN → V1 → V2 → V4 → IT)
+- 분홍 점선 화살표: 교정 신호 (δ, L1 배달, q 갱신)
+- 주황 선·칸: v2 에서 추가된 V1 안내 라우팅
+- 파란 칸: 표본마다 새로 계산하는 값, 분홍 칸: 저장·학습되는 값 (q, prototype)
+- 초록 칸: 통과·정상 종료, 빨간 칸: 제외·오류·금지
+- 회색 화살표: 프로그램 부품 사이의 호출·기록 순서

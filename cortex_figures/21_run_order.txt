@@ -1,0 +1,45 @@
+﻿그림 21 / 25 — 권장 실행 순서 — PyCharm Run → 한국어 번호 메뉴
+범주: F 운영
+이미지 파일: 21_run_order.png (2200 × 736 픽셀, PNG)
+대상 프로그램: cortex_local_learning_v1.py + cortex_local_learning_v2_v1_guided_routing.py (v2.0.0)
+==============================================================================
+[이 그림이 보여 주는 것]
+처음부터 끝까지 메뉴를 누르는 권장 순서. 위 줄 다음 아래 줄로 이어진다.
+칸의 위 글자는 메뉴 번호, 아래 글자는 하는 일이다.
+파랑 = 학습, 주황 = v2 라우팅 관련, 빨강 = test (마지막에 한 번만).
+
+[순서]
+1    폴더·환경: 데이터 폴더, 저장 폴더 지정 (탐색기에서 복사한 경로를 그대로 붙여 넣어도 됨), 장치 확인
+2    검사·분할: 데이터 스캔과 train/dev/test 분할, run 폴더 생성
+3    V1 생성: 구조 요약을 보고 확인하면 V1 을 만들고 prototype 초기화, 학습 전 평가
+7-1  기본 검사 14 항목 (작은 표본으로 구현 확인)
+4    V1 학습 (Ctrl+C 로 안전하게 멈추고 다시 4 로 재개 가능)
+5    V2 추가 (V1 동결)
+4    V2 학습
+5    V4 생성: 라우팅 후보 표와 후보 없음 통계를 출력하고 기록
+9-4  라우팅 구현 검사 R00–R12
+4    V4 학습
+9-5 · 9-6  곡선 역할 진단, 안내 개입 진단 (즉각적 민감도 검사)
+5    IT 추가
+4    IT 학습
+7-5  최종 test 평가 (고정 모델에서 한 번)
+6    추론
+8    모델 · 로그 · 그림 저장
+
+[모드 선택과 비교]
+- 새 실행은 v1_guided 가 기본이다. 다른 모드로 시작하려면 데이터 분할(2) 전에 9-2 에서 고른다.
+- 이미 V1·V2 가 있는 run 에서 모드를 비교하려면 9-3 으로 분기한 새 run 들을 각각 학습한다.
+
+[명령줄로 같은 흐름]
+python cortex_local_learning_v2_v1_guided_routing.py --self-test --output-dir "D:\cortex_out"
+python cortex_local_learning_v2_v1_guided_routing.py --data-root "D:\shapes" --output-dir "D:\cortex_out" --train-stage V2
+python cortex_local_learning_v2_v1_guided_routing.py --resume "D:\cortex_out\run_..." --train-stage V4 --routing-check --routing-diag
+python cortex_local_learning_v2_v1_guided_routing.py --branch-from "D:\cortex_out\run_..." --routing-mode geometry_only --train-stage V4
+
+[그림 공통 색 규칙]
+- 파란 실선 화살표: 순방향 감각 신호 (이미지 → LGN → V1 → V2 → V4 → IT)
+- 분홍 점선 화살표: 교정 신호 (δ, L1 배달, q 갱신)
+- 주황 선·칸: v2 에서 추가된 V1 안내 라우팅
+- 파란 칸: 표본마다 새로 계산하는 값, 분홍 칸: 저장·학습되는 값 (q, prototype)
+- 초록 칸: 통과·정상 종료, 빨간 칸: 제외·오류·금지
+- 회색 화살표: 프로그램 부품 사이의 호출·기록 순서

@@ -1,0 +1,41 @@
+﻿그림 23 / 25 — 진단 체계 — 상태 복원과 결과 상태 종류
+범주: G 검증
+이미지 파일: 23_diagnostics.png (2200 × 828 픽셀, PNG)
+대상 프로그램: cortex_local_learning_v1.py + cortex_local_learning_v2_v1_guided_routing.py (v2.0.0)
+==============================================================================
+[이 그림이 보여 주는 것]
+왼쪽 위: 모든 진단이 거치는 순서. 오른쪽: 결과 상태의 종류. 왼쪽 아래: 진단 운용 원칙.
+
+[진단 순서]
+snapshot (q · prototype · RNG · 구조 해시 저장) → 검사 실행 (합성 자극 또는 dev) → 복원 (모두 되돌림)
+→ 비교 (검사 전후가 다르면 FAILED, R10)
+진단 때문에 학습 상태가 바뀌지 않는다는 것을 매번 확인한다.
+
+[결과 상태]
+구현·수학 검사: PASSED / FAILED / NOT_RUN
+  - NOT_RUN 은 실행할 수 없었다는 뜻이며 통과가 아니다. 예: R11(CPU/GPU 비교)은 NumPy 경로에서 NOT_RUN.
+역할·성능 진단: MEASURED / NOT_RUN
+  - 측정값일 뿐 통과·실패 기준이 아니다.
+조건이 맞지 않음: NOT_APPLICABLE (예: 라우팅이 없는 legacy 모델에서 안내 개입 진단)
+
+[운용 원칙]
+- test 는 고정 모델의 최종 평가에만 쓴다. 평가 횟수와 독립성(앞선 test, test 를 본 뒤의 설계 변경,
+  test 를 본 run 에서의 분기)을 test_eval_*.json 에 기록한다.
+- 실패를 없애려고 사후에 기준을 바꾸지 않는다. 곡선 선호 실패와 코드 오류를 구분한다.
+- 안내 개입 진단은 "즉각적 민감도 검사" 다. 같은 고정 모델에서 안내만 바꾼 것이며, 각 모드를 제대로
+  학습한 최종 성능 비교가 아니다.
+- 개입 진단은 별도 무작위 스트림을 쓰고, V4 L4 감각 입력 · q · prototype 을 고정한다.
+- 모든 진단은 사용자가 고를 때만 실행한다.
+
+[관련 코드]
+Diagnostics (_snapshot, _restore, run_basic, role_responses, perturbation, test_evaluation),
+RoutingDiagnostics (implementation_checks, role_diagnostics, intervention_diagnostics),
+상수 PASSED, FAILED, MEASURED, NOT_RUN, NOT_APPLICABLE
+
+[그림 공통 색 규칙]
+- 파란 실선 화살표: 순방향 감각 신호 (이미지 → LGN → V1 → V2 → V4 → IT)
+- 분홍 점선 화살표: 교정 신호 (δ, L1 배달, q 갱신)
+- 주황 선·칸: v2 에서 추가된 V1 안내 라우팅
+- 파란 칸: 표본마다 새로 계산하는 값, 분홍 칸: 저장·학습되는 값 (q, prototype)
+- 초록 칸: 통과·정상 종료, 빨간 칸: 제외·오류·금지
+- 회색 화살표: 프로그램 부품 사이의 호출·기록 순서

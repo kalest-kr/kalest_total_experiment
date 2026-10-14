@@ -1,0 +1,51 @@
+﻿그림 11 / 25 — 단계 학습·동결 — 영역을 하나씩 추가하고 앞 영역은 얼린다
+범주: D 학습
+이미지 파일: 11_stage_training.png (2200 × 1206 픽셀, PNG)
+대상 프로그램: cortex_local_learning_v1.py + cortex_local_learning_v2_v1_guided_routing.py (v2.0.0)
+==============================================================================
+[이 그림이 보여 주는 것]
+맨 위: V1 → V2 → V4 → IT 단계 순서. 가운데: 한 단계 안의 흐름. 아래: 단계 상태가 바뀌는 상태도.
+
+[맨 위 — 단계 순서]
+한 영역 학습이 끝나면 동결 해시를 기록하고 다음 영역을 추가한다.
+동결 확인 대상: q · prototype · 구조 · 전처리 해시. 앞 영역은 동결 뒤에도 출력만 매번 다시 계산한다.
+
+[가운데 — 한 단계 안의 흐름]
+1 구조 계획: 뉴런 수·연결 수·메모리 추정을 먼저 보여 주고 확인을 받는다
+2 생성: 장치 텐서를 만들고 prototype = train 클래스 평균으로 초기화
+3 학습 전 평가: dev 평가를 training.csv 에 epoch −1 행(row_kind = before_training)으로 남긴다
+   → 초기 구조 성능과 학습 효과를 나눠 볼 수 있다
+4 에폭 학습: 배치 16 개씩 7 단계 주기 (그림 10). 에폭의 표본 순서는 seed·영역·에폭 번호로 고정된다
+5 에폭 끝: prototype 갱신 → dev 평가 (클래스별 정확도·혼동행렬·출력 노름·라우팅 통계 기록)
+6 종료 판정: 아래 상태도. 계속이면 다음 에폭으로 (점선)
+
+[아래 — 상태도]
+not_started → running (시작)
+running → 종료 상태 3가지 (초록), 판정 순서 ① → ② → ③:
+  ① success_criterion_met: dev 정확도 ≥ success_dev_accuracy (기본값 없음, 설정해야 작동)
+  ② plateau: 개선 없는 에폭 수 ≥ patience 5 (개선 = 최고 dev + min_delta 0 초과)
+  ③ budget_exhausted: 완료 에폭 ≥ max_epochs 20
+running → 중단·오류 상태 (아래 줄):
+  interrupted_manual: Ctrl+C. 재개하면 멈춘 위치부터 이어 간다 (점선 "재개")
+  oom: GPU 메모리 부족으로 3번 재시도해도 실패 (그림 18)
+  failed: 다른 예외. q 를 되돌리고 checkpoint 를 저장한 뒤 오류를 보고
+종료 상태 3가지(STAGE_TERMINAL)에서만 다음 영역을 추가할 수 있다. 끝난 단계는 --epochs 나 메뉴 4 로 연장할 수 있다.
+
+[알아 둘 점]
+- 성공 기준 없이 끝난 단계에서 다음 영역을 추가하면 경고를 stage_transitions.jsonl 에 기록한다.
+- 재개할 때 바꿀 수 있는 학습 설정은 max_epochs · patience · min_delta · success_dev_accuracy 뿐이다.
+  나머지가 다르면 같은 실행으로 이어 붙이지 않는다.
+- 순차 동결이라 앞 영역의 정보 손실·오분류 구조를 뒤 영역에서 고칠 수 없다.
+
+[관련 코드]
+StageTrainer.run, StageTrainer._epoch_end, new_stage_state, epoch_permutation,
+Session.add_next_area_prepare / add_next_area_commit, Session.freeze_area, Session.frozen_check,
+Session.stage_start_eval
+
+[그림 공통 색 규칙]
+- 파란 실선 화살표: 순방향 감각 신호 (이미지 → LGN → V1 → V2 → V4 → IT)
+- 분홍 점선 화살표: 교정 신호 (δ, L1 배달, q 갱신)
+- 주황 선·칸: v2 에서 추가된 V1 안내 라우팅
+- 파란 칸: 표본마다 새로 계산하는 값, 분홍 칸: 저장·학습되는 값 (q, prototype)
+- 초록 칸: 통과·정상 종료, 빨간 칸: 제외·오류·금지
+- 회색 화살표: 프로그램 부품 사이의 호출·기록 순서

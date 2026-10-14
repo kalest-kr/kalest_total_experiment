@@ -1,0 +1,44 @@
+﻿그림 09 / 25 — 분류와 prototype — 클래스 평균 벡터와의 각도로 분류
+범주: D 학습
+이미지 파일: 09_prototype.png (2200 × 984 픽셀, PNG)
+대상 프로그램: cortex_local_learning_v1.py + cortex_local_learning_v2_v1_guided_routing.py (v2.0.0)
+==============================================================================
+[이 그림이 보여 주는 것]
+왼쪽: 코사인 분류의 개념도 (각도는 실제 값이 아님). 오른쪽: prototype 을 만들고 갱신하고 분류에 쓰는 세 흐름.
+
+[왼쪽 — 코사인 분류]
+- 회색 선 = 클래스별 prototype 벡터 (circle, square, triangle 예시), 파란 화살표 = 이 이미지의 출력 h.
+- h 와 각도가 가장 작은 prototype 의 클래스를 예측한다 (그림에서는 square).
+- 코사인은 벡터 크기와 무관하므로, 출력 전체 크기만 바뀌어서는 예측이 달라지지 않는다.
+- ‖h‖ ≤ 1e-12 (영벡터)면 unknown 이고 오답으로 센다.
+
+[오른쪽 1행 — 초기화]
+train 순방향 (q 고정, 갱신 없음) → 클래스별 평균 h̄_c → P_c = h̄_c.
+영역을 만든 직후 한 번 한다 (prototype version 1). 라벨은 출력을 클래스별로 묶는 데만 쓴다.
+
+[오른쪽 2행 — 에폭 끝 갱신]
+에폭 학습이 끝나면 q 를 고정한 채 train 을 다시 순방향해 h̄_c 를 구하고
+P_c ← (1 − ρ) P_c + ρ · h̄_c,  ρ = 0.05 (그 에폭에 표본이 있는 클래스만).
+prototype 사이 최소 쌍각과 collapse 경고를 prototype_metrics.csv 에 기록한다.
+
+[오른쪽 3행 — 분류와 기록]
+pred = argmax_c cos(h, P_c). 코사인 값은 확률이 아니다.
+동점 수, 정답 prototype 까지의 거리, margin(정답 코사인 − 다른 클래스 최대 코사인)을 기록한다.
+정답 클래스의 prototype 이 영벡터(무효)면 그 표본은 교정 신호 δ = 0 으로 둔다.
+
+[주의]
+- prototype 벌리기 규칙이 없다. 클래스가 한 방향으로 모이는 collapse 는 진단으로만 확인한다.
+- 단계가 끝나도 best dev 상태로 되돌리지 않고 마지막 상태를 쓴다. best dev 에폭은 기록만 한다.
+- 크기 오차와 방향 오차를 따로 기록하지만, 두 오차를 L2/L3 책임으로 나누지 않는다.
+
+[관련 코드]
+PrototypeBank (set, targets, pairwise_cos), cosine_classify, Session.init_prototypes, Session.evaluate,
+StageTrainer 의 에폭 끝 갱신
+
+[그림 공통 색 규칙]
+- 파란 실선 화살표: 순방향 감각 신호 (이미지 → LGN → V1 → V2 → V4 → IT)
+- 분홍 점선 화살표: 교정 신호 (δ, L1 배달, q 갱신)
+- 주황 선·칸: v2 에서 추가된 V1 안내 라우팅
+- 파란 칸: 표본마다 새로 계산하는 값, 분홍 칸: 저장·학습되는 값 (q, prototype)
+- 초록 칸: 통과·정상 종료, 빨간 칸: 제외·오류·금지
+- 회색 화살표: 프로그램 부품 사이의 호출·기록 순서

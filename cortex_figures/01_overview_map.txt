@@ -1,0 +1,40 @@
+﻿그림 01 / 25 — 전체 지도 — 계산 경로와 운영 계층
+범주: A 개요
+이미지 파일: 01_overview_map.png (2200 × 1170 픽셀, PNG)
+대상 프로그램: cortex_local_learning_v1.py + cortex_local_learning_v2_v1_guided_routing.py (v2.0.0)
+==============================================================================
+[이 그림이 보여 주는 것]
+프로그램 전체를 두 층으로 나눠 보여 준다. 위쪽 줄은 이미지 한 장이 지나가는 계산 경로이고,
+아래쪽 두 줄은 그 경로를 만들고, 학습시키고, 검사하고, 기록하는 프로그램 부품이다.
+
+[구성 요소]
+1. 이미지: 데이터 폴더의 하위 폴더 이름이 클래스 이름이다 (그림 03).
+2. 망막·LGN: 크기 맞춤 → 휘도 → DoG ON/OFF → 로그-극좌표 표본으로 LGN 입력 벡터를 만든다 (그림 04).
+3. V1 · V2 · V4 · IT: 영역마다 L4 → L2 → L3 순서로 계산한다. IT L3 출력이 분류 벡터 h 다 (그림 06).
+4. prototype: 클래스마다 하나씩 있는 기준 벡터. h 와 코사인 비교해 가장 비슷한 클래스를 고른다.
+5. 예측: argmax 결과. h 가 영벡터(크기 ≤ 1e-12)면 unknown 이다 (그림 09).
+6. 분홍 점선 (교정): δ = prototype정답 − h 를 L1 배달로 활성 영역 L2·L3 에 보내 q 를 고친다 (그림 10).
+   그림의 상태 표시는 예시다. V4 단계를 학습하는 중이라면 V1·V2 는 동결, IT 는 아직 없다.
+7. 주황 점선 (v2): V1 L3 출력을 V4 곡선 뉴런의 둘째 입력 위치를 고르는 데만 읽는다 (그림 12–17).
+8. CortexModel: q 저장소, CSR 연결, L6 이득, 라우팅 표를 가진 계산 본체.
+9. 메뉴 1–9 · CLI → Session (run 폴더 만들기, 데이터 분할, 영역 생성, 분기)
+   → StageTrainer (에폭·배치 학습, checkpoint). Diagnostics 는 검사 뒤 모델 상태를 되돌린다.
+10. run 폴더: 설정·checkpoint·학습 기록·라우팅 기록·진단·그림·요약이 모두 남는다 (그림 20).
+
+[핵심 원리]
+- 한 번에 한 영역(활성 영역)만 학습한다. 앞 영역은 q·prototype·연결을 동결한 채 출력만 매번 다시 계산한다.
+- 학습은 q(지속 출력 파라미터)에만 적용하는 국소 규칙이며, 역전파·autograd·optimizer 를 쓰지 않는다.
+- v2 에서 바뀐 곳은 주황 화살표 하나뿐이다. V1 활동을 V4 출력에 더하거나 이어 붙이지 않는다.
+
+[관련 코드]
+RetinaLGNPreprocessor, CortexModel.forward, NeuronStore, PrototypeBank, cosine_classify,
+LocalErrorRouter, L1Relay, LocalOutputLearner, Session, StageTrainer, Diagnostics,
+RoutingDiagnostics, MenuApp, run_cli, RunRecorder
+
+[그림 공통 색 규칙]
+- 파란 실선 화살표: 순방향 감각 신호 (이미지 → LGN → V1 → V2 → V4 → IT)
+- 분홍 점선 화살표: 교정 신호 (δ, L1 배달, q 갱신)
+- 주황 선·칸: v2 에서 추가된 V1 안내 라우팅
+- 파란 칸: 표본마다 새로 계산하는 값, 분홍 칸: 저장·학습되는 값 (q, prototype)
+- 초록 칸: 통과·정상 종료, 빨간 칸: 제외·오류·금지
+- 회색 화살표: 프로그램 부품 사이의 호출·기록 순서
