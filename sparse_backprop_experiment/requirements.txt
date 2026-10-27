@@ -1,0 +1,8 @@
+# sparse_backprop_experiment.py 의존성
+# CUDA(GPU)를 쓰려면 README_ko.md 안내대로 torch / torchvision 을 PyTorch 공식 색인에서 먼저 설치한 뒤
+# 이 파일을 설치하세요. 이미 설치된 CUDA 빌드는 아래 조건을 만족하므로 바뀌지 않습니다.
+torch>=2.1
+torchvision>=0.16
+numpy>=1.24
+matplotlib>=3.7
+psutil>=5.9
