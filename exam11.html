@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<script
+  src="https://code.jquery.com/jquery-4.0.0.js"
+  integrity="sha256-9fsHeVnKBvqh3FB2HYu7g2xseAZ5MlN6Kz/qnkASV8U="
+  crossorigin="anonymous"></script>
+<script>
+    $(document).ready(function(){  //페이지 즉, 바디 문서가 다 로딩되면 시작
+        $('button').click(function(){ // 버튼이 클릭되었을 경우 발생할 이벤트 헨들러. 근데 굳이 이것도 콜백이나 익명함수로 해야하나?
+            $('h1').css('color,', 'red'); //h1을 붉게 바꿈
+            $('p').css('backgroundColor', 'yellow'); //background-color도 가능(css property 사용 가능)
+            $('img').attr('src', 'https://placehold.co/300x300')
+            $('#t1').tedxt('<a href="https://www.syu.ac.kr>text()</a>')//앵커가 실제로 들어가진 않고 그냥 문자만 들어감. 문자는 내가 써야지 ㅇㅇ
+            $('#t2').tedxt('<a href="https://www.syu.ac.kr>html()</a>')//html로 문자 바꾸기. 실제 앵커가 들어감. 너무 어렵고 귀찮은데 앵커 변수 호출 안 되나? 그리고 이러면 그냥 p를 a로 아예 변환한거 아닌가?
+            $('#t1').toggleClass('c1'); //toggleClass이기 때문에 다시 클릭할 경우 색이 물들거나 빠짐. 클래스 앨리먼트를 그때 그때 add remove 가능. 그럼 다른 것도 toggle 가능?
+            
+        })
+    });
+</script>
+<style>
+    .c1 {color: brown;}
+</style>
+<body>
+    <h1>jquery 예제</h1>
+    <p id="t1">삼육대학교</p>// 텍스트와 html로 내용을 변경 가능
+    <p id="t2">인공지능융합학부</p>
+    <p>웹프로그래밍</p>
+    <img src="https://placehold.co/100x100" alt=""><br>
+    <img src="" alt=""><br>
+    <button></button>
+</body>
+</html>
