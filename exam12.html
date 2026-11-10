@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<script src="https://code.jquery.com/jquery-3.7.1.js" integrity="sha256-eKhayi8LEQwp4NKxN+CfCh+3qOVUtJn3QNZ0TciWLP4=" crossorigin="anonymous"></script>
+<script>    
+    $(document).ready(function(){
+        $('a').click(function(event){
+            event.preventDefault(); //기본 이벤트 처리 막기
+            alert('링크 이동 불가')//이벤트 변경
+        });
+        $('#i1').hover(function(){
+            $(this).css('color', 'red')
+        }), function(){
+            $(this).css('color', 'black')
+        };
+        $('button').click(function(){
+            $('img').toggle(normal);//버튼 클릭시 이미지 토글하는 효과 추가 fadetoggle도 사용 가능
+        })
+    });//http는 리퀘스트시 이벤트를 처리하는 방식(순차적으로 페이지 변경) ajax는 비동기적(기존 상태 페이지를 유지하며 javascript로 새로운 변경 정보를 가져오는 방식)
+</script>//클라에서 업데이트가 필요한지 어케 아는거지?
+<body>
+    <h1>jquery 이벤트처리</h1>
+    <p><a href="http://www.syu.ac.kr">삼육대학교</a></p>
+    <p id="i1">인공지능융합학부</p>
+    <p>인공지능융합학부</p>
+    <img src="https://www.syu.ac.kr/wp-content/uploads/2018/05/text_img1.jpg" alt=""><br>
+    <button>클릭</button>
+</body>
+</html>
