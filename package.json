@@ -1,0 +1,23 @@
+{
+  "name": "kalest_total_experiment",
+  "version": "1.0.0",
+  "description": "",
+  "homepage": "https://github.com/kalest-kr/kalest_total_experiment#readme",
+  "bugs": {
+    "url": "https://github.com/kalest-kr/kalest_total_experiment/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kalest-kr/kalest_total_experiment.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "exam14.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "ansi-colors": "^4.1.3"
+  }
+}

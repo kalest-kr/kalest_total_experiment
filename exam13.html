@@ -8,6 +8,7 @@
 <style>
     h1 {text-align: center}
     .disp {width:205px; height:40px; margin-top: 3px;}
+    .disp {font-family: "Oxanium", sans-serif; font-size: 22pt; text-align: right;} 
     input [type=button] {width: 50px; height: 50px; text-align: center; vertical-align: middle; margin-top: 5px;}
     #calc {width: 220px; margin-left: auto; margin-right: auto;}
 </style>
@@ -15,8 +16,18 @@
 <script>
     $(document.ready(function(){
         $(".num").click(function(){
-            let n = $(this).val()
-            $("#disp2").val(n)
+            let cur = $('#disp2').val(); //이전 값 보전 
+            let n = $(this).val(); //현재 눌린 버튼 파악 및 밸류 값 가져오
+            $("#disp2").val(cur + n); //밸류 값 변경
+        })
+        $('.op').click(function(){
+            let cur = $('#disp2').val();
+            let opt = $(this).val();
+            if(opt != "="){$("#disp2").val(cur + opt);}
+            else {
+                $('#disp1').val(cur);
+                $("#disp2").val(eval(cur));
+            }
         })
     }))
 </script>
