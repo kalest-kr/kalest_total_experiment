@@ -23,7 +23,7 @@ const server = http.createServer((req, res) => {
         res.end("HOME")
     }
 
-    else if (method === 'GET' && URL === '/ABOUT'){
+    else if (method === 'GET' && URL === '/about'){
         res.statusCode= 200;
         res.end("ABOUT")
     }
