@@ -13,9 +13,24 @@ const server = http.createServer((req, res) => {
     //res.write("Hellow, Node");
     //res.end();
 
-    res.setHeader("Content-type", "text/html")
-    const readStream = fs.createReadStream(__dirname+"/index.html", "utf8")
-    readStream.pipe(res);
+    //res.setHeader("Content-type", "text/html")
+    //const readStream = fs.createReadStream(__dirname+"/index.html", "utf8")
+    //readStream.pipe(res);
+    const {motheod, url} = req;
+        
+    if(method === 'GET' && URL === '/home'){
+        res.statuscode = 200
+        res.end("HOME")
+    }
+
+    else if (method === 'GET' && URL === '/ABOUT'){
+        res.statusCode= 200;
+        res.end("ABOUT")
+    }
+    else {
+        res.statusCode = 404;
+        res.end("NOT FOUND")
+    }
 });
 
 server.listen(PORT, () => { // waiting으로 서버사이드 반응을 대기 ctrl + c로 실행취소 가능
