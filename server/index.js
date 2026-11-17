@@ -34,5 +34,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => { // waiting으로 서버사이드 반응을 대기 ctrl + c로 실행취소 가능
-    console.log(`$(PORT)포트로 서버 실행`);
+    console.log(`${PORT}포트로 서버 실행`);
 });
