@@ -16,7 +16,7 @@ const server = http.createServer((req, res) => {
     //res.setHeader("Content-type", "text/html")
     //const readStream = fs.createReadStream(__dirname+"/index.html", "utf8")
     //readStream.pipe(res);
-    const {motheod, url} = req;
+    const {method, URL} = req;
         
     if(method === 'GET' && URL === '/home'){
         res.statuscode = 200
